@@ -1,0 +1,70 @@
+name: Build x86 add-on
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Release Win32
+        shell: powershell
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $installation = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $installation) { throw 'Visual Studio C++ toolchain not found.' }
+
+          $msbuild = Join-Path $installation 'MSBuild\Current\Bin\MSBuild.exe'
+          if (-not (Test-Path -LiteralPath $msbuild)) { throw "MSBuild not found: $msbuild" }
+
+          & $msbuild .\weapon_depth_merge.vcxproj /t:Rebuild /restore `
+            /p:Configuration=Release `
+            /p:Platform=Win32 `
+            /p:PlatformToolset=v143 `
+            /p:WindowsTargetPlatformVersion=10.0 `
+            /m
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify PE32 and exports
+        shell: powershell
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $installation = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $dumpbin = Get-ChildItem -Path (Join-Path $installation 'VC\Tools\MSVC') -Filter dumpbin.exe -Recurse |
+            Where-Object { $_.FullName -match 'Hostx64\\x64\\dumpbin\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $dumpbin) { throw 'dumpbin.exe not found.' }
+
+          $binary = '.\build\WeaponDepthMerge.addon32'
+          $headers = (& $dumpbin /headers $binary | Out-String)
+          $exports = (& $dumpbin /exports $binary | Out-String)
+          if ($headers -notmatch '14C machine \(x86\)') { throw 'Binary is not PE32/x86.' }
+          if ($exports -notmatch '\bNAME\b' -or $exports -notmatch '\bDESCRIPTION\b') { throw 'Required ReShade exports are missing.' }
+
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $binary).Hash
+          "$hash *WeaponDepthMerge.addon32" | Set-Content -Encoding ASCII '.\build\SHA256SUMS.txt'
+          Write-Host "SHA-256: $hash"
+
+      - name: Upload add-on
+        uses: actions/upload-artifact@v4
+        with:
+          name: WeaponDepthMerge-1.0-x86
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            build/WeaponDepthMerge.addon32
+            build/SHA256SUMS.txt

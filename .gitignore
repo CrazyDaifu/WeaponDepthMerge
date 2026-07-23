@@ -1,0 +1,20 @@
+# Visual Studio intermediates
+.vs/
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+build/intermediate/
+build/*.exp
+build/*.ilk
+build/*.lib
+build/*.pdb
+build/WeaponDepthMerge.lib
+
+# Local test files and logs
+test-game/
+ReShade.log
+ReShade.ini
+
+# Root release archives are generated for delivery. Vendored source archives are tracked.
+/*.zip
