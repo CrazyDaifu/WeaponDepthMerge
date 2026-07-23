@@ -4,7 +4,7 @@
 
 - First affected version: 1.0
 - Candidate fix: 1.1 RC1
-- Runtime confirmation: fixed in 1.1 RC1; final `v1.1` is still pending the RC2 regression test
+- Runtime confirmation: fixed in 1.1 RC1; final `v1.1` is still pending the RC3 regression test
 - Environment: Battlefield 2 using DXVK, with ReShade attached to Vulkan
 - Symptom: black screen followed by a silent process exit before reaching the game
 
@@ -26,7 +26,8 @@ Version 1.1 makes every cross-API callback return without side effects unless th
 
 - First affected version: 1.0
 - Also affected: 1.1 RC1
-- Candidate fix: 1.1 RC2
+- Partial fix: 1.1 RC2 removes the near-black/dark return frame, but the hang remains in roughly two out of three attempts
+- Current candidate fix: 1.1 RC3
 - Final fixed version: pending runtime confirmation
 - Environment: Battlefield 2 in both native D3D9 and the tested DXVK configuration
 - Symptom: after switching to another application and returning to the game, the image becomes much darker (almost black), then the game freezes and eventually exits
@@ -39,7 +40,9 @@ The DXVK report is handled by the same fail-safe logic when the chain is exposed
 
 ### Candidate fix
 
-RC2 checks `TestCooperativeLevel` and every relevant D3D9 state operation. It stops interception on the first failure, lets the original game draw run when safe, clears unavailable depth bindings, and stays suspended until ReShade initializes the command list after reset.
+RC2 checks `TestCooperativeLevel` and every relevant D3D9 state operation. It stops interception on the first failure, lets the original game draw run when safe, clears unavailable depth bindings, and stays suspended until ReShade initializes the command list after reset. Testing confirmed that this prevents the dark frame, but it acts too late in some focus transitions because D3D9 may still report an operational device during the first part of Alt+Tab.
+
+RC3 additionally detects whether the Battlefield 2 process owns the foreground window. Interception pauses immediately on focus loss and resumes only after 30 consecutive foreground presents. It also captures and restores the actual native depth-stencil surface around replay rather than assuming ReShade's tracked INTZ surface remains current throughout a focus transition. High-frequency rendering callbacks are now registered only while a native D3D9 device exists, so a direct Vulkan ReShade runtime does not enter the add-on's draw, clear, present, or effect paths at all.
 
 ### Expected behavior after the fix
 

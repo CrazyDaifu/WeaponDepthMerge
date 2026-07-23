@@ -32,13 +32,13 @@ After the 1.1 candidate passes both runtime tests, publish the final tag and Git
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-github.ps1 -PublishRelease -ReleaseTag v1.1
 ```
 
-The script rejects `-PublishRelease` while `VERSION` contains a pre-release suffix such as `1.1-rc2`, or when the requested tag does not exactly match `v<VERSION>`.
+The script rejects `-PublishRelease` while `VERSION` contains a pre-release suffix such as `1.1-rc3`, or when the requested tag does not exactly match `v<VERSION>`.
 
 ## What happens online
 
 - `.github/workflows/build.yml` builds and verifies the x86 add-on on every push and pull request.
 - `.github/workflows/release.yml` builds the tagged version again and publishes `WeaponDepthMerge.addon32` plus `SHA256SUMS.txt` on the GitHub Releases page.
 
-For 1.1, do not run the publishing script with `-PublishRelease` until the `releases/1.1-rc2/` candidate passes native D3D9 and DXVK startup plus repeated Alt+Tab testing.
+For 1.1, do not run the publishing script with `-PublishRelease` until the `releases/1.1-rc3/` candidate passes native D3D9 and DXVK startup plus repeated Alt+Tab testing.
 
 After upload, open the repository's Actions page. Both workflows should turn green. The release appears under the repository's Releases section after the tag workflow finishes.

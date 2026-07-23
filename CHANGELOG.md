@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1 RC3 - 2026-07-24
+
+- Recorded that RC2 prevents the near-black/dark return frame, but Battlefield 2 still hangs after Alt+Tab in roughly two out of three attempts.
+- Pause interception as soon as the game process is no longer in the foreground, before D3D9 necessarily reports a lost device.
+- Require 30 consecutive foreground presents after returning before depth interception resumes.
+- Capture and restore the actual native depth-stencil surface around every replay instead of assuming the tracked INTZ surface is still bound.
+- Register draw, clear, present, and effect callbacks only while at least one native D3D9 device exists; direct Vulkan runtimes now receive only device-lifecycle checks.
+- Retain all RC1 cross-API guards and RC2 native-state failure checks.
+- Awaiting repeated native D3D9 and DXVK Alt+Tab runtime testing.
+
 ## 1.1 RC2 - 2026-07-24
 
 - Added a candidate fix for the Alt+Tab/device-reset crash present since version 1.0.
@@ -9,7 +19,7 @@
 - Suspend interception after a native API failure and resume only after ReShade reports command-list reinitialization.
 - Clear the ReShade `DEPTH` binding while interception is suspended or the merged view is unavailable.
 - Added an overlay diagnostic showing whether interception is active or suspended.
-- Awaiting native D3D9 and DXVK Alt+Tab runtime confirmation.
+- Runtime result: the return frame no longer becomes dark, but the game still hangs in about two out of three Alt+Tab attempts; superseded by RC3.
 
 ## 1.1 RC1 - 2026-07-24
 

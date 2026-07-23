@@ -2,7 +2,7 @@
 
 Purpose: test the lost-device and Alt+Tab recovery fix while retaining the RC1 DXVK startup guard.
 
-Status: compiled and structurally verified, awaiting Battlefield 2 runtime confirmation.
+Status: runtime-tested. It prevents the near-black/dark return frame, but Battlefield 2 still hangs after Alt+Tab in roughly two out of three attempts. Superseded by RC3.
 
 Test both native D3D9 and DXVK. Enter a map, Alt+Tab away for at least five seconds, return, and repeat at least three times. Native D3D9 must resume normal colors and depth merging. DXVK must remain stable even though Vulkan depth merging is inactive.
 

@@ -13,7 +13,7 @@ Initial native D3D9 functional testing confirmed that depth merging works; later
 
 ## Alt+Tab/device-reset regression
 
-Version 1.0 and 1.1 RC1 can become very dark, freeze, and eventually exit after switching away from Battlefield 2 and back. RC2 suspends interception as soon as D3D9 enters a lost/unavailable state and resumes only after command-list reinitialization.
+Version 1.0 and 1.1 RC1 can become very dark, freeze, and eventually exit after switching away from Battlefield 2 and back. RC2 prevents the dark frame but still hangs in roughly two out of three attempts. RC3 pauses on foreground focus loss, waits for 30 stable foreground presents before resuming, and restores the exact native depth surface after replay.
 
 Run this test in both native D3D9 and DXVK:
 
@@ -21,10 +21,10 @@ Run this test in both native D3D9 and DXVK:
 2. Alt+Tab to another application for at least five seconds.
 3. Return to Battlefield 2 and wait at least thirty seconds.
 4. Repeat the cycle three times from the menu and three times while spawned.
-5. In native D3D9, confirm that the scene and weapon colors recover and `Merged draw calls` resumes increasing.
+5. In native D3D9, confirm that the scene and weapon colors recover and `Merged draw calls` resumes increasing after the short 30-present stabilization delay.
 6. In DXVK, confirm that the game remains stable and the add-on remains inactive when ReShade reports Vulkan.
 
-Failure evidence should include the end of `ReShade.log` and whether the overlay showed `active` or `suspended until reset` before the freeze.
+Failure evidence should include the end of `ReShade.log` and the last visible values of both `Device interception` and `Focus interception`.
 
 ## DXVK regression
 
