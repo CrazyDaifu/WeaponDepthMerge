@@ -126,6 +126,9 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 
 static device_state *get_state(command_list *cmd_list)
 {
+	if (cmd_list == nullptr || cmd_list->get_device()->get_api() != device_api::d3d9)
+		return nullptr;
+
 	return cmd_list->get_device()->get_private_data<device_state>();
 }
 
@@ -228,7 +231,11 @@ static bool is_target_draw(device_state &state)
 template <typename DrawCall>
 static bool replay_weapon_draw(command_list *cmd_list, DrawCall &&draw_call)
 {
-	device_state &state = *get_state(cmd_list);
+	device_state *const state_ptr = get_state(cmd_list);
+	if (state_ptr == nullptr)
+		return false;
+
+	device_state &state = *state_ptr;
 	if (!is_target_draw(state))
 	{
 		if (state.primitive_up_pending)
@@ -309,19 +316,19 @@ static bool replay_weapon_draw(command_list *cmd_list, DrawCall &&draw_call)
 
 static void on_init_device(device *device)
 {
-	if (device->get_api() == device_api::d3d9)
+	if (device != nullptr && device->get_api() == device_api::d3d9)
 		device->create_private_data<device_state>(device);
 }
 
 static void on_destroy_device(device *device)
 {
-	if (device->get_api() == device_api::d3d9 && device->get_private_data<device_state>() != nullptr)
+	if (device != nullptr && device->get_api() == device_api::d3d9 && device->get_private_data<device_state>() != nullptr)
 		device->destroy_private_data<device_state>();
 }
 
 static void on_init_command_list(command_list *cmd_list)
 {
-	if (cmd_list->get_device()->get_api() != device_api::d3d9)
+	if (cmd_list == nullptr || cmd_list->get_device()->get_api() != device_api::d3d9)
 		return;
 
 	if (device_state *const state = get_state(cmd_list))
@@ -333,7 +340,7 @@ static void on_init_command_list(command_list *cmd_list)
 
 static void on_destroy_command_list(command_list *cmd_list)
 {
-	if (cmd_list->get_device()->get_api() != device_api::d3d9)
+	if (cmd_list == nullptr || cmd_list->get_device()->get_api() != device_api::d3d9)
 		return;
 
 	if (device_state *const state = get_state(cmd_list))
@@ -348,7 +355,7 @@ static void on_bind_render_targets(command_list *cmd_list, uint32_t, const resou
 
 static void on_destroy_resource_view(device *device, resource_view view)
 {
-	if (device->get_api() != device_api::d3d9)
+	if (device == nullptr || device->get_api() != device_api::d3d9)
 		return;
 
 	if (device_state *const state = device->get_private_data<device_state>();
@@ -396,7 +403,11 @@ static void on_bind_vertex_buffers(command_list *cmd_list, uint32_t first, uint3
 
 static bool on_draw(command_list *cmd_list, uint32_t vertices, uint32_t instances, uint32_t first_vertex, uint32_t first_instance)
 {
-	device_state &state = *get_state(cmd_list);
+	device_state *const state_ptr = get_state(cmd_list);
+	if (state_ptr == nullptr)
+		return false;
+
+	device_state &state = *state_ptr;
 	const bool target_draw = is_target_draw(state);
 	if (target_draw)
 	{
@@ -416,7 +427,11 @@ static bool on_draw(command_list *cmd_list, uint32_t vertices, uint32_t instance
 
 static bool on_draw_indexed(command_list *cmd_list, uint32_t indices, uint32_t instances, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance)
 {
-	device_state &state = *get_state(cmd_list);
+	device_state *const state_ptr = get_state(cmd_list);
+	if (state_ptr == nullptr)
+		return false;
+
+	device_state &state = *state_ptr;
 	const bool target_draw = is_target_draw(state);
 	if (target_draw)
 	{
@@ -436,7 +451,11 @@ static bool on_draw_indexed(command_list *cmd_list, uint32_t indices, uint32_t i
 
 static bool on_clear_depth(command_list *cmd_list, resource_view dsv, const float *depth, const uint8_t *stencil, uint32_t rect_count, const rect *rects)
 {
-	device_state &state = *get_state(cmd_list);
+	device_state *const state_ptr = get_state(cmd_list);
+	if (state_ptr == nullptr)
+		return false;
+
+	device_state &state = *state_ptr;
 	if (!s_enabled || dsv == 0)
 		return false;
 
@@ -490,6 +509,9 @@ static bool on_clear_depth(command_list *cmd_list, resource_view dsv, const floa
 
 static void update_depth_binding(effect_runtime *runtime)
 {
+	if (runtime == nullptr || runtime->get_device()->get_api() != device_api::d3d9)
+		return;
+
 	device_state *const state = runtime->get_device()->get_private_data<device_state>();
 	const resource_view srv = state != nullptr ? state->combined_srv : resource_view { 0 };
 	runtime->update_texture_bindings("DEPTH", srv, srv);
@@ -497,6 +519,9 @@ static void update_depth_binding(effect_runtime *runtime)
 
 static void on_begin_effects(effect_runtime *runtime, command_list *cmd_list, resource_view, resource_view)
 {
+	if (runtime == nullptr || cmd_list == nullptr || runtime->get_device()->get_api() != device_api::d3d9)
+		return;
+
 	device_state *const state = runtime->get_device()->get_private_data<device_state>();
 	if (state == nullptr || state->combined_srv == 0)
 		return;
@@ -508,12 +533,22 @@ static void on_begin_effects(effect_runtime *runtime, command_list *cmd_list, re
 
 static void on_present(command_queue *, swapchain *swapchain, const rect *, const rect *, uint32_t, const rect *)
 {
+	if (swapchain == nullptr || swapchain->get_device()->get_api() != device_api::d3d9)
+		return;
+
 	if (device_state *const state = swapchain->get_device()->get_private_data<device_state>())
 		state->reset_frame();
 }
 
 static void draw_settings(effect_runtime *runtime)
 {
+	if (runtime == nullptr || runtime->get_device()->get_api() != device_api::d3d9)
+	{
+		ImGui::TextUnformatted("Weapon Depth Merge 1.1 is inactive: this application is not using native D3D9.");
+		ImGui::TextWrapped("DXVK uses Vulkan. The add-on now loads safely there, but depth merging remains available only with native D3D9.");
+		return;
+	}
+
 	device_state *const state = runtime->get_device()->get_private_data<device_state>();
 	if (state == nullptr)
 	{
@@ -577,7 +612,7 @@ static void load_config()
 }
 
 extern "C" __declspec(dllexport) const char *NAME = "Weapon Depth Merge";
-extern "C" __declspec(dllexport) const char *DESCRIPTION = "Weapon Depth Merge 1.0 for D3D9 x86 and ReShade 6.7.3.";
+extern "C" __declspec(dllexport) const char *DESCRIPTION = "Weapon Depth Merge 1.1 RC1 for native D3D9 x86 and ReShade 6.7.3.";
 
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 {

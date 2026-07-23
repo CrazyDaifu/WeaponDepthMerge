@@ -11,6 +11,17 @@
 
 Initial runtime testing reported that the feature works and no bug was observed.
 
+## DXVK regression
+
+Version 1.0 could crash at startup when Battlefield 2 used DXVK and ReShade therefore ran on Vulkan. Version 1.1 guards all non-D3D9 event callbacks. Expected behavior under DXVK is now:
+
+- the game reaches its normal startup/menu instead of black-screen exiting;
+- the add-on can be listed by ReShade;
+- the overlay states that the add-on is inactive because the runtime is not native D3D9;
+- no weapon-depth merging is attempted on Vulkan.
+
+This is a crash-compatibility fix, not a Vulkan implementation of the merge algorithm.
+
 ## Installation
 
 Copy `build/WeaponDepthMerge.addon32` beside the ReShade D3D9 DLL. Start with:
@@ -43,4 +54,4 @@ Copy `build/WeaponDepthMerge.addon32` beside the ReShade D3D9 DLL. Start with:
 - Die, respawn, enter vehicles, switch seats, and switch weapons.
 - Open menus, loading screens, scope views, and commander/map screens.
 - Test AO both enabled and disabled to separate depth bugs from effect settings.
-
+- Start once through DXVK/Vulkan to verify safe no-op loading and no startup crash.

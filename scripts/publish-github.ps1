@@ -4,7 +4,8 @@ param(
     [ValidateSet('public', 'private')]
     [string]$Visibility = 'public',
     [string]$Description = 'ReShade 6.7.3 x86 D3D9 add-on for merging first-person weapon and cockpit depth.',
-    [string]$ReleaseTag = 'v1.0'
+    [string]$ReleaseTag = 'v1.1',
+    [switch]$PublishRelease
 )
 
 $ErrorActionPreference = 'Stop'
@@ -84,15 +85,29 @@ try {
     if (-not (Test-Path -LiteralPath '.git')) {
         Invoke-Checked git init -b main
     }
-    else {
-        Invoke-Checked git branch -M main
+
+    $currentBranch = (& git branch --show-current).Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($currentBranch)) {
+        throw 'Unable to determine the current Git branch.'
     }
 
-    Write-Host 'Building and verifying the local 1.0 binary before upload...'
+    $version = (Get-Content -Raw -LiteralPath '.\VERSION').Trim()
+    if ([string]::IsNullOrWhiteSpace($version)) {
+        throw 'VERSION is empty.'
+    }
+
+    Write-Host "Building and verifying the local $version binary before upload..."
     Invoke-Checked powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'build-release.ps1')
     Invoke-Checked powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'verify-binary.ps1')
     $localHash = (Get-FileHash -Algorithm SHA256 -LiteralPath '.\build\WeaponDepthMerge.addon32').Hash
     "$localHash *WeaponDepthMerge.addon32" | Set-Content -Encoding ASCII '.\build\SHA256SUMS.txt'
+
+    # Keep an existing version archive identical to the freshly rebuilt candidate.
+    $versionArchive = Join-Path '.\releases' $version
+    if (Test-Path -LiteralPath $versionArchive) {
+        Copy-Item -LiteralPath '.\build\WeaponDepthMerge.addon32' -Destination (Join-Path $versionArchive 'WeaponDepthMerge.addon32') -Force
+        "$localHash *WeaponDepthMerge.addon32" | Set-Content -Encoding ASCII (Join-Path $versionArchive 'SHA256SUMS.txt')
+    }
 
     $githubLogin = (& $ghCommand api user --jq .login).Trim()
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($githubLogin)) {
@@ -108,7 +123,7 @@ try {
 
     Invoke-Checked git add --all
     if (-not (Test-NativeCommand git diff --cached --quiet)) {
-        Invoke-Checked git commit -m 'Release 1.0'
+        Invoke-Checked git commit -m "Prepare $version"
     }
 
     if (-not (Test-NativeCommand git remote get-url origin)) {
@@ -121,21 +136,38 @@ try {
         }
     }
 
-    Invoke-Checked git push --set-upstream origin main
+    if ($PublishRelease) {
+        if ($version -match '-') {
+            throw "VERSION '$version' is a pre-release. Change VERSION to the final release number before publishing a release tag."
+        }
+        if ($ReleaseTag -ne "v$version") {
+            throw "Release tag '$ReleaseTag' does not match VERSION '$version'. Expected 'v$version'."
+        }
+    }
 
-    if (-not (Test-NativeCommand git rev-parse --verify "refs/tags/$ReleaseTag")) {
-        Invoke-Checked git tag -a $ReleaseTag -m "WeaponDepthMerge 1.0"
+    Invoke-Checked git push --set-upstream origin $currentBranch
+
+    if ($PublishRelease) {
+        if (-not (Test-NativeCommand git rev-parse --verify "refs/tags/$ReleaseTag")) {
+            Invoke-Checked git tag -a $ReleaseTag -m "WeaponDepthMerge $version"
+        }
+        elseif ((& git rev-list -n 1 $ReleaseTag).Trim() -ne (& git rev-parse HEAD).Trim()) {
+            throw "Local tag '$ReleaseTag' already points to a different commit. Delete or rename that tag before publishing."
+        }
+        Invoke-Checked git push origin $ReleaseTag
     }
-    elseif ((& git rev-list -n 1 $ReleaseTag).Trim() -ne (& git rev-parse HEAD).Trim()) {
-        throw "Local tag '$ReleaseTag' already points to a different commit. Delete or rename that tag before publishing."
-    }
-    Invoke-Checked git push origin $ReleaseTag
 
     $url = (& $ghCommand repo view --json url --jq .url).Trim()
     Write-Host ''
     Write-Host "Published: $url"
     Write-Host "Actions: $url/actions"
-    Write-Host "Release workflow was triggered by tag $ReleaseTag."
+    Write-Host "Branch pushed: $currentBranch"
+    if ($PublishRelease) {
+        Write-Host "Release workflow was triggered by tag $ReleaseTag."
+    }
+    else {
+        Write-Host 'Candidate branch uploaded. No final release tag was created.'
+    }
 }
 finally {
     Pop-Location
