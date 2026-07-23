@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1 RC4 - 2026-07-24
+
+- Recorded that RC3 still produced near-100% Alt+Tab crash/freeze rates in Battlefield 2.
+- Reverted dynamic event registration and kept callback registration fixed for the add-on lifetime.
+- Once focus is lost, permanently disable depth interception for the current process instead of attempting to resume after reset.
+- Hardened resource-view destruction so a ReShade reset cannot double-release the add-on's combined depth view.
+- Awaiting runtime confirmation that Alt+Tab is stable, even if depth merging remains disabled after the first focus loss.
+
 ## 1.1 RC3 - 2026-07-24
 
 - Recorded that RC2 prevents the near-black/dark return frame, but Battlefield 2 still hangs after Alt+Tab in roughly two out of three attempts.
@@ -19,7 +27,7 @@
 - Suspend interception after a native API failure and resume only after ReShade reports command-list reinitialization.
 - Clear the ReShade `DEPTH` binding while interception is suspended or the merged view is unavailable.
 - Added an overlay diagnostic showing whether interception is active or suspended.
-- Runtime result: the return frame no longer becomes dark, but the game still hangs in about two out of three Alt+Tab attempts; superseded by RC3.
+- Runtime result: near-100% Alt+Tab crash/freeze rate; superseded by RC4.
 
 ## 1.1 RC1 - 2026-07-24
 

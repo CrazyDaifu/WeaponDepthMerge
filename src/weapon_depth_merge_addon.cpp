@@ -23,17 +23,11 @@ namespace
 {
 constexpr uint32_t min_segment_drawcalls = 4;
 constexpr uint64_t min_segment_vertices = 20;
-constexpr uint32_t focus_resume_present_count = 30;
 
 bool s_enabled = true;
 uint32_t s_forced_clear_index = 1;
 float s_depth_bias = 0.5f;
 bool s_require_full_size_viewport = true;
-uint32_t s_d3d9_device_count = 0;
-bool s_d3d9_events_registered = false;
-
-static void register_d3d9_events();
-static void unregister_d3d9_events();
 
 struct segment_stats
 {
@@ -57,13 +51,13 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 		release_resources();
 	}
 
-	void release_resources()
+	void release_resources(resource_view destroyed_view = { 0 })
 	{
-		if (combined_srv != 0)
+		if (combined_srv != 0 && combined_srv != destroyed_view)
 		{
 			owner->destroy_resource_view(combined_srv);
-			combined_srv = { 0 };
 		}
+		combined_srv = { 0 };
 
 		if (scratch_dsv != nullptr)
 		{
@@ -132,7 +126,6 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 	bool primitive_up_pending = false;
 	bool suspended = false;
 	bool focus_paused = false;
-	uint32_t foreground_presents = 0;
 	uint64_t merged_drawcalls = 0;
 	uint64_t skipped_up_drawcalls = 0;
 	uint64_t failed_drawcalls = 0;
@@ -181,10 +174,11 @@ static bool is_interception_ready(device_state &state)
 	if (!is_application_foreground(state))
 	{
 		state.focus_paused = true;
-		state.foreground_presents = 0;
 		return false;
 	}
 
+	// Do not re-enable interception after a focus loss. A D3D9 reset can leave
+	// application and ReShade resources in different generations until restart.
 	return !state.focus_paused && is_device_ready(state);
 }
 
@@ -412,8 +406,6 @@ static void on_init_device(device *device)
 	if (device != nullptr && device->get_api() == device_api::d3d9)
 	{
 		device->create_private_data<device_state>(device);
-		if (s_d3d9_device_count++ == 0)
-			register_d3d9_events();
 	}
 }
 
@@ -422,8 +414,6 @@ static void on_destroy_device(device *device)
 	if (device != nullptr && device->get_api() == device_api::d3d9 && device->get_private_data<device_state>() != nullptr)
 	{
 		device->destroy_private_data<device_state>();
-		if (s_d3d9_device_count != 0 && --s_d3d9_device_count == 0)
-			unregister_d3d9_events();
 	}
 }
 
@@ -464,10 +454,10 @@ static void on_destroy_resource_view(device *device, resource_view view)
 		return;
 
 	if (device_state *const state = device->get_private_data<device_state>();
-		state != nullptr && view == state->combined_dsv)
+		state != nullptr && (view == state->combined_dsv || view == state->combined_srv))
 	{
 		state->current_dsv = { 0 };
-		state->release_resources();
+		state->release_resources(view);
 	}
 }
 
@@ -661,17 +651,7 @@ static void on_present(command_queue *, swapchain *swapchain, const rect *, cons
 		if (!is_application_foreground(*state))
 		{
 			state->focus_paused = true;
-			state->foreground_presents = 0;
 		}
-		else if (state->focus_paused && !state->suspended)
-		{
-			if (++state->foreground_presents >= focus_resume_present_count)
-			{
-				state->focus_paused = false;
-				state->foreground_presents = 0;
-			}
-		}
-
 		state->reset_frame();
 	}
 }
@@ -748,45 +728,6 @@ static void load_config()
 	reshade::get_config_value(nullptr, "WEAPON_DEPTH_MERGE", "RequireFullSizeViewport", s_require_full_size_viewport);
 }
 
-static void register_d3d9_events()
-{
-	if (s_d3d9_events_registered)
-		return;
-
-	reshade::register_event<reshade::addon_event::init_command_list>(on_init_command_list);
-	reshade::register_event<reshade::addon_event::destroy_command_list>(on_destroy_command_list);
-	reshade::register_event<reshade::addon_event::destroy_resource_view>(on_destroy_resource_view);
-	reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(on_bind_render_targets);
-	reshade::register_event<reshade::addon_event::bind_viewports>(on_bind_viewports);
-	reshade::register_event<reshade::addon_event::bind_vertex_buffers>(on_bind_vertex_buffers);
-	reshade::register_event<reshade::addon_event::draw>(on_draw);
-	reshade::register_event<reshade::addon_event::draw_indexed>(on_draw_indexed);
-	reshade::register_event<reshade::addon_event::clear_depth_stencil_view>(on_clear_depth);
-	reshade::register_event<reshade::addon_event::present>(on_present);
-	reshade::register_event<reshade::addon_event::reshade_begin_effects>(on_begin_effects);
-	reshade::register_event<reshade::addon_event::reshade_reloaded_effects>(update_depth_binding);
-	s_d3d9_events_registered = true;
-}
-
-static void unregister_d3d9_events()
-{
-	if (!s_d3d9_events_registered)
-		return;
-
-	reshade::unregister_event<reshade::addon_event::init_command_list>(on_init_command_list);
-	reshade::unregister_event<reshade::addon_event::destroy_command_list>(on_destroy_command_list);
-	reshade::unregister_event<reshade::addon_event::destroy_resource_view>(on_destroy_resource_view);
-	reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(on_bind_render_targets);
-	reshade::unregister_event<reshade::addon_event::bind_viewports>(on_bind_viewports);
-	reshade::unregister_event<reshade::addon_event::bind_vertex_buffers>(on_bind_vertex_buffers);
-	reshade::unregister_event<reshade::addon_event::draw>(on_draw);
-	reshade::unregister_event<reshade::addon_event::draw_indexed>(on_draw_indexed);
-	reshade::unregister_event<reshade::addon_event::clear_depth_stencil_view>(on_clear_depth);
-	reshade::unregister_event<reshade::addon_event::present>(on_present);
-	reshade::unregister_event<reshade::addon_event::reshade_begin_effects>(on_begin_effects);
-	reshade::unregister_event<reshade::addon_event::reshade_reloaded_effects>(update_depth_binding);
-	s_d3d9_events_registered = false;
-}
 }
 
 extern "C" __declspec(dllexport) const char *NAME = "Weapon Depth Merge";
@@ -803,13 +744,36 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 		load_config();
 		reshade::register_event<reshade::addon_event::init_device>(on_init_device);
 		reshade::register_event<reshade::addon_event::destroy_device>(on_destroy_device);
+		reshade::register_event<reshade::addon_event::init_command_list>(on_init_command_list);
+		reshade::register_event<reshade::addon_event::destroy_command_list>(on_destroy_command_list);
+		reshade::register_event<reshade::addon_event::destroy_resource_view>(on_destroy_resource_view);
+		reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(on_bind_render_targets);
+		reshade::register_event<reshade::addon_event::bind_viewports>(on_bind_viewports);
+		reshade::register_event<reshade::addon_event::bind_vertex_buffers>(on_bind_vertex_buffers);
+		reshade::register_event<reshade::addon_event::draw>(on_draw);
+		reshade::register_event<reshade::addon_event::draw_indexed>(on_draw_indexed);
+		reshade::register_event<reshade::addon_event::clear_depth_stencil_view>(on_clear_depth);
+		reshade::register_event<reshade::addon_event::present>(on_present);
+		reshade::register_event<reshade::addon_event::reshade_begin_effects>(on_begin_effects);
+		reshade::register_event<reshade::addon_event::reshade_reloaded_effects>(update_depth_binding);
 		reshade::register_overlay(nullptr, draw_settings);
 		break;
 
 	case DLL_PROCESS_DETACH:
-		unregister_d3d9_events();
 		reshade::unregister_event<reshade::addon_event::init_device>(on_init_device);
 		reshade::unregister_event<reshade::addon_event::destroy_device>(on_destroy_device);
+		reshade::unregister_event<reshade::addon_event::init_command_list>(on_init_command_list);
+		reshade::unregister_event<reshade::addon_event::destroy_command_list>(on_destroy_command_list);
+		reshade::unregister_event<reshade::addon_event::destroy_resource_view>(on_destroy_resource_view);
+		reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(on_bind_render_targets);
+		reshade::unregister_event<reshade::addon_event::bind_viewports>(on_bind_viewports);
+		reshade::unregister_event<reshade::addon_event::bind_vertex_buffers>(on_bind_vertex_buffers);
+		reshade::unregister_event<reshade::addon_event::draw>(on_draw);
+		reshade::unregister_event<reshade::addon_event::draw_indexed>(on_draw_indexed);
+		reshade::unregister_event<reshade::addon_event::clear_depth_stencil_view>(on_clear_depth);
+		reshade::unregister_event<reshade::addon_event::present>(on_present);
+		reshade::unregister_event<reshade::addon_event::reshade_begin_effects>(on_begin_effects);
+		reshade::unregister_event<reshade::addon_event::reshade_reloaded_effects>(update_depth_binding);
 		reshade::unregister_overlay(nullptr, draw_settings);
 		reshade::unregister_addon(module);
 		break;
