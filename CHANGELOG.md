@@ -9,3 +9,4 @@
 - Added device-reset and selected-resource destruction handling.
 - Verified the output as PE32/x86 with `NAME` and `DESCRIPTION` exports.
 - Battlefield 2 runtime test reported successful; no bug observed in the initial test.
+- Fixed one-click GitHub publishing on Windows PowerShell 5.1 when the local repository does not yet have an `origin` remote or release tag.

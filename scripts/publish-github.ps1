@@ -24,6 +24,29 @@ function Invoke-Checked {
     }
 }
 
+function Test-NativeCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Program,
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Arguments
+    )
+
+    # PowerShell 5.1 turns expected native stderr output into a terminating error
+    # when ErrorActionPreference is Stop. Probes only need the process exit code.
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'SilentlyContinue'
+        & $Program @Arguments *> $null
+        $succeeded = $LASTEXITCODE -eq 0
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    return $succeeded
+}
+
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     throw 'Git is not installed or is not available in PATH.'
 }
@@ -53,8 +76,7 @@ if (-not $ghCommand) {
 
 Push-Location $repoRoot
 try {
-    & $ghCommand auth status *> $null
-    if ($LASTEXITCODE -ne 0) {
+    if (-not (Test-NativeCommand $ghCommand auth status)) {
         Write-Host 'GitHub authentication is required. Follow the interactive login prompts.'
         Invoke-Checked $ghCommand auth login --web --git-protocol https
     }
@@ -85,15 +107,12 @@ try {
     }
 
     Invoke-Checked git add --all
-    & git diff --cached --quiet
-    if ($LASTEXITCODE -ne 0) {
+    if (-not (Test-NativeCommand git diff --cached --quiet)) {
         Invoke-Checked git commit -m 'Release 1.0'
     }
 
-    & git remote get-url origin *> $null
-    if ($LASTEXITCODE -ne 0) {
-        & $ghCommand repo view "$githubLogin/$Repository" *> $null
-        if ($LASTEXITCODE -eq 0) {
+    if (-not (Test-NativeCommand git remote get-url origin)) {
+        if (Test-NativeCommand $ghCommand repo view "$githubLogin/$Repository") {
             Invoke-Checked git remote add origin "https://github.com/$githubLogin/$Repository.git"
         }
         else {
@@ -104,8 +123,7 @@ try {
 
     Invoke-Checked git push --set-upstream origin main
 
-    & git rev-parse $ReleaseTag *> $null
-    if ($LASTEXITCODE -ne 0) {
+    if (-not (Test-NativeCommand git rev-parse --verify "refs/tags/$ReleaseTag")) {
         Invoke-Checked git tag -a $ReleaseTag -m "WeaponDepthMerge 1.0"
     }
     elseif ((& git rev-list -n 1 $ReleaseTag).Trim() -ne (& git rev-parse HEAD).Trim()) {
