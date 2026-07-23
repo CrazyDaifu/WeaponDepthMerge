@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1 RC2 - 2026-07-24
+
+- Added a candidate fix for the Alt+Tab/device-reset crash present since version 1.0.
+- Stop intercepting draws and depth clears as soon as the native D3D9 device reports a lost or unavailable state.
+- Validate all captured and restored D3D9 viewport, color-write, stencil-write, depth-surface, and clear operations.
+- Fall back to the game's original draw when interception fails before the normal color draw has executed.
+- Suspend interception after a native API failure and resume only after ReShade reports command-list reinitialization.
+- Clear the ReShade `DEPTH` binding while interception is suspended or the merged view is unavailable.
+- Added an overlay diagnostic showing whether interception is active or suspended.
+- Awaiting native D3D9 and DXVK Alt+Tab runtime confirmation.
+
 ## 1.1 RC1 - 2026-07-24
 
 - Added a candidate fix for a startup crash when Battlefield 2 runs through DXVK and ReShade uses the Vulkan backend.
@@ -10,7 +21,7 @@
 - Archived the exact version 1.0 binary and checksum under `releases/1.0/`.
 - Made candidate publishing resynchronize the versioned binary archive after each rebuild and reject final tags while `VERSION` is still a pre-release.
 - Made GitHub Actions artifact names safe for `release/*` branch names.
-- Awaiting runtime confirmation before the final `v1.1` tag is created.
+- Runtime confirmed that DXVK reaches the game without the previous startup crash; RC1 still contains WDM-002.
 
 ## 1.0 - 2026-07-24
 

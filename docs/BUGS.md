@@ -4,7 +4,7 @@
 
 - First affected version: 1.0
 - Candidate fix: 1.1 RC1
-- Final fixed version: pending runtime confirmation
+- Runtime confirmation: fixed in 1.1 RC1; final `v1.1` is still pending the RC2 regression test
 - Environment: Battlefield 2 using DXVK, with ReShade attached to Vulkan
 - Symptom: black screen followed by a silent process exit before reaching the game
 
@@ -21,3 +21,28 @@ Version 1.1 makes every cross-API callback return without side effects unless th
 - Native D3D9: merge behavior remains enabled and unchanged.
 - DXVK/Vulkan: add-on loads safely and remains inactive.
 - Vulkan depth merge: not implemented.
+
+## WDM-002: Alt+Tab return freezes and crashes
+
+- First affected version: 1.0
+- Also affected: 1.1 RC1
+- Candidate fix: 1.1 RC2
+- Final fixed version: pending runtime confirmation
+- Environment: Battlefield 2 in both native D3D9 and the tested DXVK configuration
+- Symptom: after switching to another application and returning to the game, the image becomes much darker (almost black), then the game freezes and eventually exits
+
+### Cause assessment
+
+Alt+Tab causes a D3D9 lost-device/reset transition. Versions 1.0 and RC1 assumed every native state read, state write, depth-surface switch, clear, and replay operation succeeded. During the transition, failed `GetViewport` or `GetRenderState` calls could leave zero-initialized values that were then written back. A failed scratch-depth switch after the depth-only replay could also suppress the game's original color draw. Both paths can explain the dark frame and subsequent invalid rendering state.
+
+The DXVK report is handled by the same fail-safe logic when the chain is exposed as D3D9. If ReShade exposes Vulkan directly, the add-on remains a no-op as established by WDM-001.
+
+### Candidate fix
+
+RC2 checks `TestCooperativeLevel` and every relevant D3D9 state operation. It stops interception on the first failure, lets the original game draw run when safe, clears unavailable depth bindings, and stays suspended until ReShade initializes the command list after reset.
+
+### Expected behavior after the fix
+
+- Alt+Tab away and back: the game resumes normally instead of becoming dark and crashing.
+- Native D3D9 after recovery: depth merging resumes after command-list reinitialization.
+- DXVK/Vulkan: startup remains safe; Vulkan depth merging remains inactive.

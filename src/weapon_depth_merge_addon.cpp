@@ -119,6 +119,7 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 	uint32_t auto_clear_index = 1;
 	bool weapon_phase = false;
 	bool primitive_up_pending = false;
+	bool suspended = false;
 	uint64_t merged_drawcalls = 0;
 	uint64_t skipped_up_drawcalls = 0;
 	uint64_t failed_drawcalls = 0;
@@ -130,6 +131,20 @@ static device_state *get_state(command_list *cmd_list)
 		return nullptr;
 
 	return cmd_list->get_device()->get_private_data<device_state>();
+}
+
+static bool is_device_ready(device_state &state)
+{
+	if (state.suspended || state.native_device == nullptr)
+		return false;
+
+	if (FAILED(state.native_device->TestCooperativeLevel()))
+	{
+		state.suspended = true;
+		return false;
+	}
+
+	return true;
 }
 
 static bool viewport_matches(const viewport &viewport, uint32_t width, uint32_t height)
@@ -217,7 +232,7 @@ static bool select_combined_depth(device_state &state, resource_view dsv)
 
 static bool is_target_draw(device_state &state)
 {
-	if (!s_enabled || state.primitive_up_pending || state.current_dsv == 0)
+	if (!s_enabled || state.suspended || state.primitive_up_pending || state.current_dsv == 0)
 		return false;
 
 	if (state.combined_dsv == 0)
@@ -245,6 +260,8 @@ static bool replay_weapon_draw(command_list *cmd_list, DrawCall &&draw_call)
 
 	if (!state.weapon_phase)
 		return false;
+	if (!is_device_ready(state))
+		return false;
 
 	if (!create_scratch_depth(state))
 	{
@@ -260,12 +277,28 @@ static bool replay_weapon_draw(command_list *cmd_list, DrawCall &&draw_call)
 	DWORD color_write_masks[4] = {};
 	DWORD stencil_write_mask = 0;
 
-	state.native_device->GetViewport(&original_viewport);
-	state.native_device->GetRenderState(D3DRS_COLORWRITEENABLE, &color_write_masks[0]);
-	state.native_device->GetRenderState(D3DRS_COLORWRITEENABLE1, &color_write_masks[1]);
-	state.native_device->GetRenderState(D3DRS_COLORWRITEENABLE2, &color_write_masks[2]);
-	state.native_device->GetRenderState(D3DRS_COLORWRITEENABLE3, &color_write_masks[3]);
-	state.native_device->GetRenderState(D3DRS_STENCILWRITEMASK, &stencil_write_mask);
+	if (FAILED(state.native_device->GetViewport(&original_viewport)) ||
+		FAILED(state.native_device->GetRenderState(D3DRS_COLORWRITEENABLE, &color_write_masks[0])) ||
+		FAILED(state.native_device->GetRenderState(D3DRS_COLORWRITEENABLE1, &color_write_masks[1])) ||
+		FAILED(state.native_device->GetRenderState(D3DRS_COLORWRITEENABLE2, &color_write_masks[2])) ||
+		FAILED(state.native_device->GetRenderState(D3DRS_COLORWRITEENABLE3, &color_write_masks[3])) ||
+		FAILED(state.native_device->GetRenderState(D3DRS_STENCILWRITEMASK, &stencil_write_mask)))
+	{
+		state.suspended = true;
+		++state.failed_drawcalls;
+		return false;
+	}
+
+	auto restore_render_state = [&]() {
+		bool success = true;
+		success &= SUCCEEDED(state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE, color_write_masks[0]));
+		success &= SUCCEEDED(state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE1, color_write_masks[1]));
+		success &= SUCCEEDED(state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE2, color_write_masks[2]));
+		success &= SUCCEEDED(state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE3, color_write_masks[3]));
+		success &= SUCCEEDED(state.native_device->SetRenderState(D3DRS_STENCILWRITEMASK, stencil_write_mask));
+		success &= SUCCEEDED(state.native_device->SetViewport(&original_viewport));
+		return success;
+	};
 
 	// Match Thalixte's order: write biased first-person geometry into preserved depth first.
 	D3DVIEWPORT9 biased_viewport = original_viewport;
@@ -281,34 +314,37 @@ static bool replay_weapon_draw(command_list *cmd_list, DrawCall &&draw_call)
 		FAILED(state.native_device->SetRenderState(D3DRS_STENCILWRITEMASK, 0)))
 	{
 		++state.failed_drawcalls;
-		state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE, color_write_masks[0]);
-		state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE1, color_write_masks[1]);
-		state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE2, color_write_masks[2]);
-		state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE3, color_write_masks[3]);
-		state.native_device->SetRenderState(D3DRS_STENCILWRITEMASK, stencil_write_mask);
-		state.native_device->SetViewport(&original_viewport);
+		state.suspended = true;
+		restore_render_state();
 		state.native_device->SetDepthStencilSurface(combined_surface);
 		return false;
 	}
 	draw_call();
 
 	// Then execute the game's normal draw against the clearable scratch depth.
-	state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE, color_write_masks[0]);
-	state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE1, color_write_masks[1]);
-	state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE2, color_write_masks[2]);
-	state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE3, color_write_masks[3]);
-	state.native_device->SetRenderState(D3DRS_STENCILWRITEMASK, stencil_write_mask);
-	state.native_device->SetViewport(&original_viewport);
+	if (!restore_render_state())
+	{
+		++state.failed_drawcalls;
+		state.suspended = true;
+		state.native_device->SetDepthStencilSurface(combined_surface);
+		return false;
+	}
 	if (FAILED(state.native_device->SetDepthStencilSurface(state.scratch_dsv)))
 	{
 		++state.failed_drawcalls;
+		state.suspended = true;
 		state.native_device->SetDepthStencilSurface(combined_surface);
-		return true;
+		return false;
 	}
 	draw_call();
 
 	// Keep the application-visible replacement bound, like old ReShade did internally.
-	state.native_device->SetDepthStencilSurface(combined_surface);
+	if (FAILED(state.native_device->SetDepthStencilSurface(combined_surface)))
+	{
+		++state.failed_drawcalls;
+		state.suspended = true;
+		return true; // The normal draw already ran, so do not execute it a second time.
+	}
 
 	++state.merged_drawcalls;
 	return true;
@@ -335,6 +371,7 @@ static void on_init_command_list(command_list *cmd_list)
 	{
 		state->current_dsv = { 0 };
 		state->current_viewport = {};
+		state->suspended = false;
 	}
 }
 
@@ -344,7 +381,10 @@ static void on_destroy_command_list(command_list *cmd_list)
 		return;
 
 	if (device_state *const state = get_state(cmd_list))
+	{
+		state->suspended = true;
 		state->release_resources();
+	}
 }
 
 static void on_bind_render_targets(command_list *cmd_list, uint32_t, const resource_view *, resource_view dsv)
@@ -456,7 +496,7 @@ static bool on_clear_depth(command_list *cmd_list, resource_view dsv, const floa
 		return false;
 
 	device_state &state = *state_ptr;
-	if (!s_enabled || dsv == 0)
+	if (!s_enabled || dsv == 0 || !is_device_ready(state))
 		return false;
 
 	if (state.combined_dsv == 0)
@@ -483,8 +523,15 @@ static bool on_clear_depth(command_list *cmd_list, resource_view dsv, const floa
 	state.weapon_phase = true;
 
 	IDirect3DSurface9 *previous_dsv = nullptr;
-	state.native_device->GetDepthStencilSurface(&previous_dsv);
-	state.native_device->SetDepthStencilSurface(state.scratch_dsv);
+	if (FAILED(state.native_device->GetDepthStencilSurface(&previous_dsv)) ||
+		FAILED(state.native_device->SetDepthStencilSurface(state.scratch_dsv)))
+	{
+		if (previous_dsv != nullptr)
+			previous_dsv->Release();
+		state.suspended = true;
+		++state.failed_drawcalls;
+		return false;
+	}
 
 	DWORD clear_flags = 0;
 	if (depth != nullptr)
@@ -492,7 +539,7 @@ static bool on_clear_depth(command_list *cmd_list, resource_view dsv, const floa
 	if (stencil != nullptr)
 		clear_flags |= D3DCLEAR_STENCIL;
 
-	state.native_device->Clear(
+	const HRESULT clear_result = state.native_device->Clear(
 		rect_count,
 		reinterpret_cast<const D3DRECT *>(rects),
 		clear_flags,
@@ -500,9 +547,16 @@ static bool on_clear_depth(command_list *cmd_list, resource_view dsv, const floa
 		depth != nullptr ? *depth : 1.0f,
 		stencil != nullptr ? *stencil : 0);
 
-	state.native_device->SetDepthStencilSurface(previous_dsv);
+	const HRESULT restore_result = state.native_device->SetDepthStencilSurface(previous_dsv);
 	if (previous_dsv != nullptr)
 		previous_dsv->Release();
+
+	if (FAILED(clear_result) || FAILED(restore_result))
+	{
+		state.suspended = true;
+		++state.failed_drawcalls;
+		return false;
+	}
 
 	return true;
 }
@@ -513,7 +567,7 @@ static void update_depth_binding(effect_runtime *runtime)
 		return;
 
 	device_state *const state = runtime->get_device()->get_private_data<device_state>();
-	const resource_view srv = state != nullptr ? state->combined_srv : resource_view { 0 };
+	const resource_view srv = state != nullptr && !state->suspended ? state->combined_srv : resource_view { 0 };
 	runtime->update_texture_bindings("DEPTH", srv, srv);
 }
 
@@ -523,12 +577,13 @@ static void on_begin_effects(effect_runtime *runtime, command_list *cmd_list, re
 		return;
 
 	device_state *const state = runtime->get_device()->get_private_data<device_state>();
-	if (state == nullptr || state->combined_srv == 0)
+	const bool device_ready = state != nullptr && is_device_ready(*state);
+	update_depth_binding(runtime);
+	if (!device_ready || state->combined_srv == 0)
 		return;
 
 	// D3D9 cannot sample an INTZ texture while its surface is still bound as depth output.
 	cmd_list->bind_render_targets_and_depth_stencil(0, nullptr);
-	update_depth_binding(runtime);
 }
 
 static void on_present(command_queue *, swapchain *swapchain, const rect *, const rect *, uint32_t, const rect *)
@@ -582,6 +637,7 @@ static void draw_settings(effect_runtime *runtime)
 	ImGui::Text("Merged draw calls: %llu", static_cast<unsigned long long>(state->merged_drawcalls));
 	ImGui::Text("Skipped UP draw calls: %llu", static_cast<unsigned long long>(state->skipped_up_drawcalls));
 	ImGui::Text("Failed intercepted draws: %llu", static_cast<unsigned long long>(state->failed_drawcalls));
+	ImGui::Text("Device interception: %s", state->suspended ? "suspended until reset" : "active");
 
 	ImGui::Separator();
 	ImGui::TextUnformatted("Last frame clear segments:");
@@ -612,7 +668,7 @@ static void load_config()
 }
 
 extern "C" __declspec(dllexport) const char *NAME = "Weapon Depth Merge";
-extern "C" __declspec(dllexport) const char *DESCRIPTION = "Weapon Depth Merge 1.1 RC1 for native D3D9 x86 and ReShade 6.7.3.";
+extern "C" __declspec(dllexport) const char *DESCRIPTION = "Weapon Depth Merge 1.1 RC2 for native D3D9 x86 and ReShade 6.7.3.";
 
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 {

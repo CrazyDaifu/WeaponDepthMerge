@@ -9,7 +9,22 @@
 - Generic Depth `Copy depth buffer before clear operations` disabled
 - In-game MSAA disabled
 
-Initial runtime testing reported that the feature works and no bug was observed.
+Initial native D3D9 functional testing confirmed that depth merging works; later focus-switch testing exposed WDM-002.
+
+## Alt+Tab/device-reset regression
+
+Version 1.0 and 1.1 RC1 can become very dark, freeze, and eventually exit after switching away from Battlefield 2 and back. RC2 suspends interception as soon as D3D9 enters a lost/unavailable state and resumes only after command-list reinitialization.
+
+Run this test in both native D3D9 and DXVK:
+
+1. Reach the main menu, then enter a map and spawn.
+2. Alt+Tab to another application for at least five seconds.
+3. Return to Battlefield 2 and wait at least thirty seconds.
+4. Repeat the cycle three times from the menu and three times while spawned.
+5. In native D3D9, confirm that the scene and weapon colors recover and `Merged draw calls` resumes increasing.
+6. In DXVK, confirm that the game remains stable and the add-on remains inactive when ReShade reports Vulkan.
+
+Failure evidence should include the end of `ReShade.log` and whether the overlay showed `active` or `suspended until reset` before the freeze.
 
 ## DXVK regression
 
