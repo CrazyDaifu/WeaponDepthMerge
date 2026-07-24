@@ -129,6 +129,7 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 	bool suspended = false;
 	bool focus_paused = false;
 	bool effects_reload_pending = false;
+	uint32_t effects_reload_cooldown = 0;
 	uint64_t merged_drawcalls = 0;
 	uint64_t skipped_up_drawcalls = 0;
 	uint64_t failed_drawcalls = 0;
@@ -642,9 +643,10 @@ static void on_reloaded_effects(effect_runtime *runtime)
 
 	if (device_state *const state = runtime->get_device()->get_private_data<device_state>())
 	{
-		// ReShade emits this both before destroying old effects and after rebuilding
-		// the effect list. Do not touch depth bindings while that transition is active.
+		// ReShade emits this before and after rebuilding effects. Keep the add-on
+		// inert for a few complete effect frames so descriptor rebuilding can settle.
 		state->effects_reload_pending = true;
+		state->effects_reload_cooldown = 120;
 		state->bound_depth_srv = { 0 };
 	}
 }
@@ -655,12 +657,22 @@ static void on_begin_effects(effect_runtime *runtime, command_list *cmd_list, re
 		return;
 
 	device_state *const state = runtime->get_device()->get_private_data<device_state>();
-	if (state != nullptr && state->effects_reload_pending)
+	if (state == nullptr)
+		return;
+
+	if (state->effects_reload_pending)
 	{
+		if (state->effects_reload_cooldown != 0)
+		{
+			--state->effects_reload_cooldown;
+			return;
+		}
+
 		state->effects_reload_pending = false;
 		state->bound_depth_srv = { 0 };
 	}
-	const bool device_ready = state != nullptr && is_interception_ready(*state);
+
+	const bool device_ready = is_interception_ready(*state);
 	update_depth_binding(runtime);
 	if (!device_ready || state->combined_srv == 0)
 		return;

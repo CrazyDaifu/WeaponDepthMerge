@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1 RC7 - 2026-07-24
+
+- Fixed a null-state dereference in the effects callback when the menu has no selected depth buffer.
+- Keep depth interception disabled for 120 effect frames after ReShade reports an effect reload, allowing descriptor/shader recreation to settle before the add-on touches D3D9 state again.
+- Do not clear or rebind `DEPTH` while the reload cooldown is active.
+- Awaiting Battlefield 2 runtime confirmation, with the main-menu depth-zero Alt+Tab path as the primary test.
+
 ## 1.1 RC6 - 2026-07-24
 
 - Recorded the refined scope: normal runtime Shader loading is not measurably slowed; the slowdown occurs during Alt+Tab effect reload only.
