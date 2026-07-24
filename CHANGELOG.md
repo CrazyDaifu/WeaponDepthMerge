@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1 RC10 - 2026-07-24
+
+- Added an isolation quarantine: after a working combined depth view exists, the next ReShade effect reload permanently disables this add-on for the current process.
+- The quarantine stops draw replay, depth clearing, resource selection, and texture-binding updates while leaving ReShade and the game native paths untouched.
+- This is a diagnostic candidate to determine whether post-reload add-on callbacks are the remaining crash trigger.
+
 ## 1.1 RC9 - 2026-07-24
 
 - Stop calling ReShade's global `update_texture_bindings` after focus loss, while the device is suspended, during an effect reload, or when no combined depth view exists.

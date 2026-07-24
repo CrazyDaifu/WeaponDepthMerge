@@ -130,6 +130,7 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 	bool focus_paused = false;
 	bool effects_reload_pending = false;
 	uint32_t effects_reload_cooldown = 0;
+	bool reload_quarantined = false;
 	uint64_t merged_drawcalls = 0;
 	uint64_t skipped_up_drawcalls = 0;
 	uint64_t failed_drawcalls = 0;
@@ -183,7 +184,7 @@ static bool is_interception_ready(device_state &state)
 
 	// Do not re-enable interception after a focus loss. A D3D9 reset can leave
 	// application and ReShade resources in different generations until restart.
-	return !state.focus_paused && is_device_ready(state);
+	return !state.focus_paused && !state.reload_quarantined && is_device_ready(state);
 }
 
 static bool viewport_matches(const viewport &viewport, uint32_t width, uint32_t height)
@@ -271,7 +272,7 @@ static bool select_combined_depth(device_state &state, resource_view dsv)
 
 static bool is_target_draw(device_state &state)
 {
-	if (!s_enabled || state.suspended || state.focus_paused || state.effects_reload_pending || state.primitive_up_pending || state.current_dsv == 0)
+	if (!s_enabled || state.suspended || state.focus_paused || state.reload_quarantined || state.effects_reload_pending || state.primitive_up_pending || state.current_dsv == 0)
 		return false;
 
 	// Resource-view creation is unsafe while D3D9 is resetting during map loading.
@@ -653,6 +654,9 @@ static void on_reloaded_effects(effect_runtime *runtime)
 
 	if (device_state *const state = runtime->get_device()->get_private_data<device_state>())
 	{
+		if (state->combined_dsv != 0 || state->merged_drawcalls != 0)
+			state->reload_quarantined = true;
+
 		// ReShade emits this before and after rebuilding effects. Keep the add-on
 		// inert for a few complete effect frames so descriptor rebuilding can settle.
 		state->effects_reload_pending = true;
