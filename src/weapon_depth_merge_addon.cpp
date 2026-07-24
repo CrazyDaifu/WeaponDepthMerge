@@ -587,7 +587,7 @@ static void load_config()
 }
 
 extern "C" __declspec(dllexport) const char *NAME = "Weapon Depth Merge";
-extern "C" __declspec(dllexport) const char *DESCRIPTION = "Weapon Depth Merge 1.1 RC14 registration-only diagnostic for ReShade 6.7.3.";
+extern "C" __declspec(dllexport) const char *DESCRIPTION = "Weapon Depth Merge 1.1 RC15 lifecycle-callback diagnostic for ReShade 6.7.3.";
 
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 {
@@ -596,6 +596,11 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 	case DLL_PROCESS_ATTACH:
 		if (!reshade::register_addon(module))
 			return FALSE;
+
+		reshade::register_event<reshade::addon_event::init_device>(on_init_device);
+		reshade::register_event<reshade::addon_event::destroy_device>(on_destroy_device);
+		reshade::register_event<reshade::addon_event::init_command_list>(on_init_command_list);
+		reshade::register_event<reshade::addon_event::destroy_command_list>(on_destroy_command_list);
 		break;
 
 	case DLL_PROCESS_DETACH:

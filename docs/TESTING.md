@@ -11,11 +11,11 @@
 
 Initial native D3D9 functional testing confirmed that depth merging works; later focus-switch testing exposed WDM-002.
 
-## RC14 registration-only isolation
+## RC15 lifecycle-callback isolation
 
-RC14 is not a functional depth-merge candidate. Disable ShaderToggler and Generic Depth, then install only `WeaponDepthMerge.addon32`. ReShade should list the add-on as loaded, but there should be no WeaponDepthMerge settings page and no depth merge.
+RC15 is not a functional depth-merge candidate. Disable ShaderToggler and Generic Depth, then install only `WeaponDepthMerge.addon32`. ReShade should list the add-on as loaded, but there should be no WeaponDepthMerge settings page and no depth merge. Only device and command-list lifecycle callbacks are active.
 
-Test main-menu Alt+Tab, in-map Alt+Tab twice, and Esc after the first return. If RC14 still crashes, add-on registration/loading itself is sufficient to reproduce WDM-002. If it remains stable, restore callback groups incrementally to locate the failing event interaction.
+Test main-menu Alt+Tab, in-map Alt+Tab twice, and Esc after the first return. RC14 passed these cases and exited cleanly. If RC15 crashes, split device and command-list lifecycle handling. If it remains stable, continue with passive render-state callbacks.
 
 ## Alt+Tab/device-reset regression
 

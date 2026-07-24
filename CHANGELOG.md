@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1 RC15 - 2026-07-24
+
+- RC14 passed main-menu Alt+Tab, repeated in-map Alt+Tab, and Esc-after-return testing; the game then exited normally.
+- Restores only `init_device`, `destroy_device`, `init_command_list`, and `destroy_command_list` callbacks.
+- Keeps resource binding, draw, clear, present, effect-runtime, and overlay callbacks disabled.
+- Purpose: determine whether device/command-list private-state lifecycle participates in WDM-002.
+
 ## 1.1 RC14 - 2026-07-24
 
 - Registration-only diagnostic build: calls `register_addon` and `unregister_addon` but registers no ReShade events or overlay.
