@@ -40,10 +40,6 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 	explicit device_state(device *owner) : owner(owner)
 	{
 		native_device = reinterpret_cast<IDirect3DDevice9 *>(owner->get_native());
-
-		D3DDEVICE_CREATION_PARAMETERS creation_parameters = {};
-		if (native_device != nullptr && SUCCEEDED(native_device->GetCreationParameters(&creation_parameters)))
-			focus_window = creation_parameters.hFocusWindow;
 	}
 
 	~device_state()
@@ -51,14 +47,13 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 		release_resources();
 	}
 
-	void release_resources(resource_view destroyed_view = { 0 })
+	void release_resources()
 	{
-		if (combined_srv != 0 && combined_srv != destroyed_view)
+		if (combined_srv != 0)
 		{
 			owner->destroy_resource_view(combined_srv);
+			combined_srv = { 0 };
 		}
-		combined_srv = { 0 };
-		bound_depth_srv = { 0 };
 
 		if (scratch_dsv != nullptr)
 		{
@@ -105,7 +100,6 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 
 	device *owner = nullptr;
 	IDirect3DDevice9 *native_device = nullptr;
-	HWND focus_window = nullptr;
 
 	resource_view current_dsv = { 0 };
 	viewport current_viewport = {};
@@ -113,7 +107,6 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 	resource_view combined_dsv = { 0 };
 	resource combined_resource = { 0 };
 	resource_view combined_srv = { 0 };
-	resource_view bound_depth_srv = { 0 };
 	IDirect3DSurface9 *scratch_dsv = nullptr;
 	uint32_t combined_width = 0;
 	uint32_t combined_height = 0;
@@ -126,11 +119,6 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 	uint32_t auto_clear_index = 1;
 	bool weapon_phase = false;
 	bool primitive_up_pending = false;
-	bool suspended = false;
-	bool focus_paused = false;
-	bool effects_reload_pending = false;
-	uint32_t effects_reload_cooldown = 0;
-	bool reload_quarantined = false;
 	uint64_t merged_drawcalls = 0;
 	uint64_t skipped_up_drawcalls = 0;
 	uint64_t failed_drawcalls = 0;
@@ -142,49 +130,6 @@ static device_state *get_state(command_list *cmd_list)
 		return nullptr;
 
 	return cmd_list->get_device()->get_private_data<device_state>();
-}
-
-static bool is_device_ready(device_state &state)
-{
-	if (state.suspended || state.native_device == nullptr)
-		return false;
-
-	if (FAILED(state.native_device->TestCooperativeLevel()))
-	{
-		state.suspended = true;
-		return false;
-	}
-
-	return true;
-}
-
-static bool is_application_foreground(const device_state &state)
-{
-	if (state.focus_window == nullptr)
-		return true;
-
-	const HWND foreground_window = GetForegroundWindow();
-	if (foreground_window == nullptr)
-		return false;
-
-	DWORD focus_process_id = 0;
-	DWORD foreground_process_id = 0;
-	GetWindowThreadProcessId(state.focus_window, &focus_process_id);
-	GetWindowThreadProcessId(foreground_window, &foreground_process_id);
-	return focus_process_id != 0 && focus_process_id == foreground_process_id;
-}
-
-static bool is_interception_ready(device_state &state)
-{
-	if (!is_application_foreground(state))
-	{
-		state.focus_paused = true;
-		return false;
-	}
-
-	// Do not re-enable interception after a focus loss. A D3D9 reset can leave
-	// application and ReShade resources in different generations until restart.
-	return !state.focus_paused && !state.reload_quarantined && is_device_ready(state);
 }
 
 static bool viewport_matches(const viewport &viewport, uint32_t width, uint32_t height)
@@ -272,11 +217,7 @@ static bool select_combined_depth(device_state &state, resource_view dsv)
 
 static bool is_target_draw(device_state &state)
 {
-	if (!s_enabled || state.suspended || state.focus_paused || state.reload_quarantined || state.effects_reload_pending || state.primitive_up_pending || state.current_dsv == 0)
-		return false;
-
-	// Resource-view creation is unsafe while D3D9 is resetting during map loading.
-	if (!is_interception_ready(state))
+	if (!s_enabled || state.primitive_up_pending || state.current_dsv == 0)
 		return false;
 
 	if (state.combined_dsv == 0)
@@ -304,8 +245,6 @@ static bool replay_weapon_draw(command_list *cmd_list, DrawCall &&draw_call)
 
 	if (!state.weapon_phase)
 		return false;
-	if (!is_interception_ready(state) || state.effects_reload_pending)
-		return false;
 
 	if (!create_scratch_depth(state))
 	{
@@ -320,40 +259,13 @@ static bool replay_weapon_draw(command_list *cmd_list, DrawCall &&draw_call)
 	D3DVIEWPORT9 original_viewport = {};
 	DWORD color_write_masks[4] = {};
 	DWORD stencil_write_mask = 0;
-	IDirect3DSurface9 *original_dsv = nullptr;
 
-	if (FAILED(state.native_device->GetDepthStencilSurface(&original_dsv)) || original_dsv == nullptr ||
-		FAILED(state.native_device->GetViewport(&original_viewport)) ||
-		FAILED(state.native_device->GetRenderState(D3DRS_COLORWRITEENABLE, &color_write_masks[0])) ||
-		FAILED(state.native_device->GetRenderState(D3DRS_COLORWRITEENABLE1, &color_write_masks[1])) ||
-		FAILED(state.native_device->GetRenderState(D3DRS_COLORWRITEENABLE2, &color_write_masks[2])) ||
-		FAILED(state.native_device->GetRenderState(D3DRS_COLORWRITEENABLE3, &color_write_masks[3])) ||
-		FAILED(state.native_device->GetRenderState(D3DRS_STENCILWRITEMASK, &stencil_write_mask)))
-	{
-		if (original_dsv != nullptr)
-			original_dsv->Release();
-		state.suspended = true;
-		++state.failed_drawcalls;
-		return false;
-	}
-
-	auto restore_render_state = [&]() {
-		bool success = true;
-		success &= SUCCEEDED(state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE, color_write_masks[0]));
-		success &= SUCCEEDED(state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE1, color_write_masks[1]));
-		success &= SUCCEEDED(state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE2, color_write_masks[2]));
-		success &= SUCCEEDED(state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE3, color_write_masks[3]));
-		success &= SUCCEEDED(state.native_device->SetRenderState(D3DRS_STENCILWRITEMASK, stencil_write_mask));
-		success &= SUCCEEDED(state.native_device->SetViewport(&original_viewport));
-		return success;
-	};
-	auto restore_depth_surface = [&]() {
-		return SUCCEEDED(state.native_device->SetDepthStencilSurface(original_dsv));
-	};
-	auto release_original_depth = [&]() {
-		original_dsv->Release();
-		original_dsv = nullptr;
-	};
+	state.native_device->GetViewport(&original_viewport);
+	state.native_device->GetRenderState(D3DRS_COLORWRITEENABLE, &color_write_masks[0]);
+	state.native_device->GetRenderState(D3DRS_COLORWRITEENABLE1, &color_write_masks[1]);
+	state.native_device->GetRenderState(D3DRS_COLORWRITEENABLE2, &color_write_masks[2]);
+	state.native_device->GetRenderState(D3DRS_COLORWRITEENABLE3, &color_write_masks[3]);
+	state.native_device->GetRenderState(D3DRS_STENCILWRITEMASK, &stencil_write_mask);
 
 	// Match Thalixte's order: write biased first-person geometry into preserved depth first.
 	D3DVIEWPORT9 biased_viewport = original_viewport;
@@ -369,42 +281,34 @@ static bool replay_weapon_draw(command_list *cmd_list, DrawCall &&draw_call)
 		FAILED(state.native_device->SetRenderState(D3DRS_STENCILWRITEMASK, 0)))
 	{
 		++state.failed_drawcalls;
-		state.suspended = true;
-		restore_render_state();
-		restore_depth_surface();
-		release_original_depth();
+		state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE, color_write_masks[0]);
+		state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE1, color_write_masks[1]);
+		state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE2, color_write_masks[2]);
+		state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE3, color_write_masks[3]);
+		state.native_device->SetRenderState(D3DRS_STENCILWRITEMASK, stencil_write_mask);
+		state.native_device->SetViewport(&original_viewport);
+		state.native_device->SetDepthStencilSurface(combined_surface);
 		return false;
 	}
 	draw_call();
 
 	// Then execute the game's normal draw against the clearable scratch depth.
-	if (!restore_render_state())
-	{
-		++state.failed_drawcalls;
-		state.suspended = true;
-		restore_depth_surface();
-		release_original_depth();
-		return false;
-	}
+	state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE, color_write_masks[0]);
+	state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE1, color_write_masks[1]);
+	state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE2, color_write_masks[2]);
+	state.native_device->SetRenderState(D3DRS_COLORWRITEENABLE3, color_write_masks[3]);
+	state.native_device->SetRenderState(D3DRS_STENCILWRITEMASK, stencil_write_mask);
+	state.native_device->SetViewport(&original_viewport);
 	if (FAILED(state.native_device->SetDepthStencilSurface(state.scratch_dsv)))
 	{
 		++state.failed_drawcalls;
-		state.suspended = true;
-		restore_depth_surface();
-		release_original_depth();
-		return false;
+		state.native_device->SetDepthStencilSurface(combined_surface);
+		return true;
 	}
 	draw_call();
 
-	// Restore the exact surface that was bound before the replay, since focus changes can invalidate tracked assumptions.
-	if (!restore_depth_surface())
-	{
-		++state.failed_drawcalls;
-		state.suspended = true;
-		release_original_depth();
-		return true; // The normal draw already ran, so do not execute it a second time.
-	}
-	release_original_depth();
+	// Keep the application-visible replacement bound, like old ReShade did internally.
+	state.native_device->SetDepthStencilSurface(combined_surface);
 
 	++state.merged_drawcalls;
 	return true;
@@ -435,7 +339,6 @@ static void on_init_command_list(command_list *cmd_list)
 	{
 		state->current_dsv = { 0 };
 		state->current_viewport = {};
-		state->suspended = false;
 	}
 }
 
@@ -445,10 +348,7 @@ static void on_destroy_command_list(command_list *cmd_list)
 		return;
 
 	if (device_state *const state = get_state(cmd_list))
-	{
-		state->suspended = true;
 		state->release_resources();
-	}
 }
 
 static void on_bind_render_targets(command_list *cmd_list, uint32_t, const resource_view *, resource_view dsv)
@@ -463,10 +363,10 @@ static void on_destroy_resource_view(device *device, resource_view view)
 		return;
 
 	if (device_state *const state = device->get_private_data<device_state>();
-		state != nullptr && (view == state->combined_dsv || view == state->combined_srv))
+		state != nullptr && view == state->combined_dsv)
 	{
 		state->current_dsv = { 0 };
-		state->release_resources(view);
+		state->release_resources();
 	}
 }
 
@@ -560,7 +460,7 @@ static bool on_clear_depth(command_list *cmd_list, resource_view dsv, const floa
 		return false;
 
 	device_state &state = *state_ptr;
-	if (!s_enabled || dsv == 0 || !is_interception_ready(state))
+	if (!s_enabled || dsv == 0)
 		return false;
 
 	if (state.combined_dsv == 0)
@@ -587,15 +487,8 @@ static bool on_clear_depth(command_list *cmd_list, resource_view dsv, const floa
 	state.weapon_phase = true;
 
 	IDirect3DSurface9 *previous_dsv = nullptr;
-	if (FAILED(state.native_device->GetDepthStencilSurface(&previous_dsv)) ||
-		FAILED(state.native_device->SetDepthStencilSurface(state.scratch_dsv)))
-	{
-		if (previous_dsv != nullptr)
-			previous_dsv->Release();
-		state.suspended = true;
-		++state.failed_drawcalls;
-		return false;
-	}
+	state.native_device->GetDepthStencilSurface(&previous_dsv);
+	state.native_device->SetDepthStencilSurface(state.scratch_dsv);
 
 	DWORD clear_flags = 0;
 	if (depth != nullptr)
@@ -603,7 +496,7 @@ static bool on_clear_depth(command_list *cmd_list, resource_view dsv, const floa
 	if (stencil != nullptr)
 		clear_flags |= D3DCLEAR_STENCIL;
 
-	const HRESULT clear_result = state.native_device->Clear(
+	state.native_device->Clear(
 		rect_count,
 		reinterpret_cast<const D3DRECT *>(rects),
 		clear_flags,
@@ -611,16 +504,9 @@ static bool on_clear_depth(command_list *cmd_list, resource_view dsv, const floa
 		depth != nullptr ? *depth : 1.0f,
 		stencil != nullptr ? *stencil : 0);
 
-	const HRESULT restore_result = state.native_device->SetDepthStencilSurface(previous_dsv);
+	state.native_device->SetDepthStencilSurface(previous_dsv);
 	if (previous_dsv != nullptr)
 		previous_dsv->Release();
-
-	if (FAILED(clear_result) || FAILED(restore_result))
-	{
-		state.suspended = true;
-		++state.failed_drawcalls;
-		return false;
-	}
 
 	return true;
 }
@@ -631,38 +517,8 @@ static void update_depth_binding(effect_runtime *runtime)
 		return;
 
 	device_state *const state = runtime->get_device()->get_private_data<device_state>();
-	if (state == nullptr)
-		return;
-
-	// Once focus is lost or the device is suspended, leave ReShade's existing
-	// descriptors untouched. Calling update_texture_bindings during a reset or
-	// a second effect reload can race ReShade's descriptor rebuild.
-	if (state->suspended || state->focus_paused || state->effects_reload_pending || state->combined_srv == 0)
-		return;
-
-	const resource_view srv = state->combined_srv;
-	if (state->bound_depth_srv == srv)
-		return;
-	state->bound_depth_srv = srv;
+	const resource_view srv = state != nullptr ? state->combined_srv : resource_view { 0 };
 	runtime->update_texture_bindings("DEPTH", srv, srv);
-}
-
-static void on_reloaded_effects(effect_runtime *runtime)
-{
-	if (runtime == nullptr || runtime->get_device()->get_api() != device_api::d3d9)
-		return;
-
-	if (device_state *const state = runtime->get_device()->get_private_data<device_state>())
-	{
-		if (state->combined_dsv != 0 || state->merged_drawcalls != 0)
-			state->reload_quarantined = true;
-
-		// ReShade emits this before and after rebuilding effects. Keep the add-on
-		// inert for a few complete effect frames so descriptor rebuilding can settle.
-		state->effects_reload_pending = true;
-		state->effects_reload_cooldown = 120;
-		state->bound_depth_srv = { 0 };
-	}
 }
 
 static void on_begin_effects(effect_runtime *runtime, command_list *cmd_list, resource_view, resource_view)
@@ -671,28 +527,12 @@ static void on_begin_effects(effect_runtime *runtime, command_list *cmd_list, re
 		return;
 
 	device_state *const state = runtime->get_device()->get_private_data<device_state>();
-	if (state == nullptr)
-		return;
-
-	if (state->effects_reload_pending)
-	{
-		if (state->effects_reload_cooldown != 0)
-		{
-			--state->effects_reload_cooldown;
-			return;
-		}
-
-		state->effects_reload_pending = false;
-		state->bound_depth_srv = { 0 };
-	}
-
-	const bool device_ready = is_interception_ready(*state);
-	update_depth_binding(runtime);
-	if (!device_ready || state->combined_srv == 0)
+	if (state == nullptr || state->combined_srv == 0)
 		return;
 
 	// D3D9 cannot sample an INTZ texture while its surface is still bound as depth output.
 	cmd_list->bind_render_targets_and_depth_stencil(0, nullptr);
+	update_depth_binding(runtime);
 }
 
 static void on_present(command_queue *, swapchain *swapchain, const rect *, const rect *, uint32_t, const rect *)
@@ -701,13 +541,7 @@ static void on_present(command_queue *, swapchain *swapchain, const rect *, cons
 		return;
 
 	if (device_state *const state = swapchain->get_device()->get_private_data<device_state>())
-	{
-		if (!is_application_foreground(*state))
-		{
-			state->focus_paused = true;
-		}
 		state->reset_frame();
-	}
 }
 
 static void draw_settings(effect_runtime *runtime)
@@ -752,8 +586,6 @@ static void draw_settings(effect_runtime *runtime)
 	ImGui::Text("Merged draw calls: %llu", static_cast<unsigned long long>(state->merged_drawcalls));
 	ImGui::Text("Skipped UP draw calls: %llu", static_cast<unsigned long long>(state->skipped_up_drawcalls));
 	ImGui::Text("Failed intercepted draws: %llu", static_cast<unsigned long long>(state->failed_drawcalls));
-	ImGui::Text("Device interception: %s", state->suspended ? "suspended until reset" : "active");
-	ImGui::Text("Focus interception: %s", state->focus_paused ? "paused until stable" : "active");
 
 	ImGui::Separator();
 	ImGui::TextUnformatted("Last frame clear segments:");
@@ -785,7 +617,7 @@ static void load_config()
 }
 
 extern "C" __declspec(dllexport) const char *NAME = "Weapon Depth Merge";
-extern "C" __declspec(dllexport) const char *DESCRIPTION = "Weapon Depth Merge 1.1 RC6 for native D3D9 x86 and ReShade 6.7.3.";
+extern "C" __declspec(dllexport) const char *DESCRIPTION = "Weapon Depth Merge 1.1 RC11 minimal baseline for native D3D9 x86 and ReShade 6.7.3.";
 
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 {
@@ -809,26 +641,11 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 		reshade::register_event<reshade::addon_event::clear_depth_stencil_view>(on_clear_depth);
 		reshade::register_event<reshade::addon_event::present>(on_present);
 		reshade::register_event<reshade::addon_event::reshade_begin_effects>(on_begin_effects);
-		reshade::register_event<reshade::addon_event::reshade_reloaded_effects>(on_reloaded_effects);
+		reshade::register_event<reshade::addon_event::reshade_reloaded_effects>(update_depth_binding);
 		reshade::register_overlay(nullptr, draw_settings);
 		break;
 
 	case DLL_PROCESS_DETACH:
-		reshade::unregister_event<reshade::addon_event::init_device>(on_init_device);
-		reshade::unregister_event<reshade::addon_event::destroy_device>(on_destroy_device);
-		reshade::unregister_event<reshade::addon_event::init_command_list>(on_init_command_list);
-		reshade::unregister_event<reshade::addon_event::destroy_command_list>(on_destroy_command_list);
-		reshade::unregister_event<reshade::addon_event::destroy_resource_view>(on_destroy_resource_view);
-		reshade::unregister_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(on_bind_render_targets);
-		reshade::unregister_event<reshade::addon_event::bind_viewports>(on_bind_viewports);
-		reshade::unregister_event<reshade::addon_event::bind_vertex_buffers>(on_bind_vertex_buffers);
-		reshade::unregister_event<reshade::addon_event::draw>(on_draw);
-		reshade::unregister_event<reshade::addon_event::draw_indexed>(on_draw_indexed);
-		reshade::unregister_event<reshade::addon_event::clear_depth_stencil_view>(on_clear_depth);
-		reshade::unregister_event<reshade::addon_event::present>(on_present);
-		reshade::unregister_event<reshade::addon_event::reshade_begin_effects>(on_begin_effects);
-		reshade::unregister_event<reshade::addon_event::reshade_reloaded_effects>(on_reloaded_effects);
-		reshade::unregister_overlay(nullptr, draw_settings);
 		reshade::unregister_addon(module);
 		break;
 	}

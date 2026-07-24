@@ -13,6 +13,7 @@ Each completed release keeps its tested binary and checksum in a versioned direc
 - `1.1-rc8/`: candidate that checks D3D9 cooperative state before depth-view selection during map loading and reset transitions.
 - `1.1-rc9/`: candidate that leaves ReShade descriptors untouched after focus loss or during reset/reload transitions.
 - `1.1-rc10/`: diagnostic candidate that permanently disables merging after the first post-activation effect reload.
+- `1.1-rc11/`: minimal RC1 baseline used to isolate regressions introduced by the later reset/reload state machine.
 - `1.1/`: generated only after RC6 passes native D3D9, DXVK startup, and repeated Alt+Tab tests.
 
 Development output remains under `build/` and may be overwritten by a rebuild. Files under `releases/<version>/` are frozen baselines and must not be overwritten by another version.

@@ -11,8 +11,8 @@ WeaponDepthMerge is an independent ReShade 6.7.3 add-on that merges native D3D9 
 - DXVK startup regression: fixed by 1.1 RC1; the Vulkan path remains inactive.
 - Target: D3D9, x86, ReShade 6.7.3 Full Add-on Support.
 - Output: `build/WeaponDepthMerge.addon32`.
-- Version: `1.1-rc10`.
-- Current test target: isolate the remaining reload crash. After a working depth view exists, the next ReShade effect reload permanently disables merging until process restart.
+- Version: `1.1-rc11`.
+- Current test target: verify the minimal RC1 baseline against map loading, Esc menus, and repeated Alt+Tab before designing a narrower reset fix.
 - DXVK/Vulkan compatibility: safe no-op loading; depth merging remains native D3D9 only.
 
 ## Quick installation

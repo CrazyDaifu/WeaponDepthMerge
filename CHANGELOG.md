@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1 RC11 - 2026-07-24
+
+- Rebased the implementation on the minimal RC1 code path: version 1.0 depth merging plus only the cross-API/null guards required for DXVK startup safety.
+- Removed RC2-RC10 focus tracking, per-draw cooperative-level checks, reload cooldowns, quarantine state, cached binding logic, and expanded reset recovery.
+- This candidate tests whether the accumulated recovery state machine caused the map/menu/reload regressions.
+
 ## 1.1 RC10 - 2026-07-24
 
 - Added an isolation quarantine: after a working combined depth view exists, the next ReShade effect reload permanently disables this add-on for the current process.
