@@ -90,6 +90,7 @@ The implementation is based on official ReShade 6.7.3 and Thalixte's verified co
 - [Bug history](docs/BUGS.md)
 - [Offline building](docs/BUILDING.md)
 - [Publishing to GitHub](docs/PUBLISHING.md)
+- [ReShade project management and one-click GitHub publishing](docs/ReShade项目管理与GitHub一键发布流程.md)
 - [Sources](SOURCES.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 
