@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1 - 2026-07-24
+
+- Fixed Battlefield 2 + DXVK/Vulkan startup crashes by making all non-D3D9 callbacks safe no-ops. Vulkan depth merging is intentionally not implemented.
+- Fixed native D3D9 Reset/Alt+Tab/Esc freezes caused by ReShade 6.7.3's stale fake `DrawPrimitiveUP` buffer handles when `bind_vertex_buffers` is registered.
+- Permanently removed `bind_vertex_buffers` registration and replaced event-based UP detection with native D3D9 stream/index validation immediately before draw replay.
+- Runtime-confirmed depth merging in Battlefield 2 native D3D9, including stable main-menu Alt+Tab, repeated in-map Alt+Tab, and Esc after returning.
+- Runtime-confirmed safe inactive loading with Battlefield 2, DXVK 2.5.3, ReShade 6.7.3 x86, and the Vulkan backend.
+- See `docs/1.1修复过程与测试记录.md` for the complete diagnosis, RC history, source-level root causes, fixes, and results.
+
 ## 1.1 RC18 - 2026-07-24
 
 - Runtime-confirmed in Battlefield 2 native D3D9: depth merging works and the main-menu Alt+Tab, repeated in-map Alt+Tab, and Esc-after-return failures are all resolved.

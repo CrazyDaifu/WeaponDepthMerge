@@ -8,15 +8,15 @@ WeaponDepthMerge is an independent ReShade 6.7.3 add-on that merges native D3D9 
 
 - Battlefield 2 runtime test: successful.
 - Native D3D9 depth merge: runtime-confirmed working.
-- DXVK startup regression: fixed by 1.1 RC1; the Vulkan path remains inactive.
+- DXVK/Vulkan startup compatibility: runtime-confirmed fixed; the Vulkan path remains intentionally inactive.
 - Target: D3D9, x86, ReShade 6.7.3 Full Add-on Support.
 - Output: `build/WeaponDepthMerge.addon32`.
-- Version: `1.1-rc18` functional candidate.
-- Native D3D9 RC18 result: depth merging and all reported Reset/Alt+Tab/Esc cases pass.
-- Remaining release test: DXVK/Vulkan startup and menu entry with the add-on safely inactive.
+- Version: `1.1`.
+- Native D3D9 result: depth merging and all reported Reset/Alt+Tab/Esc cases pass.
+- DXVK/Vulkan result: startup, menu/map flow, and safe inactive operation pass.
 - DXVK/Vulkan compatibility: safe no-op loading; depth merging remains native D3D9 only.
 
-## RC18 candidate installation
+## Installation
 
 1. Install the 32-bit D3D9 build of ReShade 6.7.3 with full add-on support.
 2. Copy `build/WeaponDepthMerge.addon32` beside ReShade's `d3d9.dll`.
@@ -25,7 +25,7 @@ WeaponDepthMerge is an independent ReShade 6.7.3 add-on that merges native D3D9 
 5. Start with `Clear index = 1` and `First-person depth bias = 0.5`.
 6. Verify depth merging, then test main-menu Alt+Tab, in-map Alt+Tab twice, and Esc after returning to the game.
 
-RC18 restores the settings page and depth merging. It never registers `bind_vertex_buffers`; ordinary draws are validated through native D3D9 stream/index state immediately before replay.
+Version 1.1 never registers `bind_vertex_buffers`; ordinary draws are validated through native D3D9 stream/index state immediately before replay.
 
 ## How it works
 
