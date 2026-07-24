@@ -2,6 +2,7 @@
 
 ## 1.1 RC18 - 2026-07-24
 
+- Runtime-confirmed in Battlefield 2 native D3D9: depth merging works and the main-menu Alt+Tab, repeated in-map Alt+Tab, and Esc-after-return failures are all resolved.
 - RC17 passed every reported Alt+Tab/Esc case, confirming ReShade 6.7.3's D3D9 `bind_vertex_buffers`/fake-UP-buffer path as the WDM-002 trigger.
 - Restores draw, indexed-draw, depth-clear, configuration, overlay, and depth-merge behavior without registering `bind_vertex_buffers`.
 - Replaces event-based UP detection with immediate native D3D9 stream/index validation only when a weapon-phase draw is about to be replayed.

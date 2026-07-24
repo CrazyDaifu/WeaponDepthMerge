@@ -4,4 +4,4 @@ Purpose: restore functional depth merging while avoiding the confirmed ReShade 6
 
 This build never registers `bind_vertex_buffers`. Before replaying a weapon-phase draw, it validates native stream-0 and index-buffer bindings and passes unbound or likely UP draws through unchanged.
 
-Status: functional candidate; awaiting Battlefield 2 depth and Reset/Alt+Tab testing.
+Status: functional candidate; Battlefield 2 native D3D9 depth and Reset/Alt+Tab/Esc testing passed. DXVK/Vulkan no-op regression testing remains pending.

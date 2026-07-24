@@ -15,7 +15,7 @@ Initial native D3D9 functional testing confirmed that depth merging works; later
 
 RC18 restores depth merging without registering `bind_vertex_buffers`. Enable Generic Depth, disable its preserve/copy-before-clear option, disable in-game MSAA, and install `WeaponDepthMerge.addon32`. Confirm that the WeaponDepthMerge settings page, full-resolution INTZ selection, and merged draw counter return.
 
-First verify AO no longer passes through the weapon/arms. Then test main-menu Alt+Tab, in-map Alt+Tab twice, and Esc after the first return. RC17 passed every stability case and confirmed the fake `DrawPrimitiveUP` buffer trigger; RC18 must preserve that stability with the functional callbacks restored.
+Battlefield 2 native D3D9 testing confirmed that AO no longer passes through the weapon/arms and that main-menu Alt+Tab, repeated in-map Alt+Tab, and Esc after returning are all stable. The remaining RC18 release gate is the DXVK/Vulkan startup and menu-entry no-op test.
 
 ## Alt+Tab/device-reset regression
 

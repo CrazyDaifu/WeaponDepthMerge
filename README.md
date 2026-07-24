@@ -12,7 +12,8 @@ WeaponDepthMerge is an independent ReShade 6.7.3 add-on that merges native D3D9 
 - Target: D3D9, x86, ReShade 6.7.3 Full Add-on Support.
 - Output: `build/WeaponDepthMerge.addon32`.
 - Version: `1.1-rc18` functional candidate.
-- Current test target: verify restored depth merging and repeated Reset/Alt+Tab stability without `bind_vertex_buffers`.
+- Native D3D9 RC18 result: depth merging and all reported Reset/Alt+Tab/Esc cases pass.
+- Remaining release test: DXVK/Vulkan startup and menu entry with the add-on safely inactive.
 - DXVK/Vulkan compatibility: safe no-op loading; depth merging remains native D3D9 only.
 
 ## RC18 candidate installation
