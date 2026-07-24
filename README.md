@@ -11,8 +11,8 @@ WeaponDepthMerge is an independent ReShade 6.7.3 add-on that merges native D3D9 
 - DXVK startup regression: fixed by 1.1 RC1; the Vulkan path remains inactive.
 - Target: D3D9, x86, ReShade 6.7.3 Full Add-on Support.
 - Output: `build/WeaponDepthMerge.addon32`.
-- Version: `1.1-rc11`.
-- Current test target: verify the minimal RC1 baseline against map loading, Esc menus, and repeated Alt+Tab before designing a narrower reset fix.
+- Version: `1.1-rc12`.
+- Current test target: verify Shader reload stability after removing all effect-runtime and add-on-owned SRV integration.
 - DXVK/Vulkan compatibility: safe no-op loading; depth merging remains native D3D9 only.
 
 ## Quick installation
@@ -33,7 +33,7 @@ After the chosen meaningful depth clear, each ordinary D3D9 draw is replayed twi
 1. Depth-only replay into the preserved INTZ scene depth, using the historical `MinZ/MaxZ - 0.5` viewport bias.
 2. Normal game draw against a separate clearable scratch depth surface.
 
-The merged INTZ view is then bound to ReShade effects through the `DEPTH` semantic. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the detailed state machine.
+Generic Depth binds its existing INTZ shader-resource view to the `DEPTH` semantic; WeaponDepthMerge only writes the additional first-person geometry into that same resource. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 
 ## Offline build
 

@@ -49,12 +49,6 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 
 	void release_resources()
 	{
-		if (combined_srv != 0)
-		{
-			owner->destroy_resource_view(combined_srv);
-			combined_srv = { 0 };
-		}
-
 		if (scratch_dsv != nullptr)
 		{
 			scratch_dsv->Release();
@@ -106,7 +100,6 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 
 	resource_view combined_dsv = { 0 };
 	resource combined_resource = { 0 };
-	resource_view combined_srv = { 0 };
 	IDirect3DSurface9 *scratch_dsv = nullptr;
 	uint32_t combined_width = 0;
 	uint32_t combined_height = 0;
@@ -194,17 +187,8 @@ static bool select_combined_depth(device_state &state, resource_view dsv)
 		!viewport_matches(state.current_viewport, desc.texture.width, desc.texture.height))
 		return false;
 
-	resource_view srv = { 0 };
-	const resource_view_desc srv_desc(resource_view_type::texture_2d, format_to_default_typed(desc.texture.format), 0, 1, 0, 1);
-	if (!device->create_resource_view(resource, resource_usage::shader_resource, srv_desc, &srv))
-	{
-		reshade::log::message(reshade::log::level::error, "Weapon Depth Merge found an INTZ depth buffer, but failed to create its shader resource view.");
-		return false;
-	}
-
 	state.combined_dsv = dsv;
 	state.combined_resource = resource;
-	state.combined_srv = srv;
 	state.combined_width = desc.texture.width;
 	state.combined_height = desc.texture.height;
 	state.candidate_format = desc.texture.format;
@@ -511,30 +495,6 @@ static bool on_clear_depth(command_list *cmd_list, resource_view dsv, const floa
 	return true;
 }
 
-static void update_depth_binding(effect_runtime *runtime)
-{
-	if (runtime == nullptr || runtime->get_device()->get_api() != device_api::d3d9)
-		return;
-
-	device_state *const state = runtime->get_device()->get_private_data<device_state>();
-	const resource_view srv = state != nullptr ? state->combined_srv : resource_view { 0 };
-	runtime->update_texture_bindings("DEPTH", srv, srv);
-}
-
-static void on_begin_effects(effect_runtime *runtime, command_list *cmd_list, resource_view, resource_view)
-{
-	if (runtime == nullptr || cmd_list == nullptr || runtime->get_device()->get_api() != device_api::d3d9)
-		return;
-
-	device_state *const state = runtime->get_device()->get_private_data<device_state>();
-	if (state == nullptr || state->combined_srv == 0)
-		return;
-
-	// D3D9 cannot sample an INTZ texture while its surface is still bound as depth output.
-	cmd_list->bind_render_targets_and_depth_stencil(0, nullptr);
-	update_depth_binding(runtime);
-}
-
 static void on_present(command_queue *, swapchain *swapchain, const rect *, const rect *, uint32_t, const rect *)
 {
 	if (swapchain == nullptr || swapchain->get_device()->get_api() != device_api::d3d9)
@@ -617,7 +577,7 @@ static void load_config()
 }
 
 extern "C" __declspec(dllexport) const char *NAME = "Weapon Depth Merge";
-extern "C" __declspec(dllexport) const char *DESCRIPTION = "Weapon Depth Merge 1.1 RC11 minimal baseline for native D3D9 x86 and ReShade 6.7.3.";
+extern "C" __declspec(dllexport) const char *DESCRIPTION = "Weapon Depth Merge 1.1 RC12 without effect-runtime binding hooks for native D3D9 x86 and ReShade 6.7.3.";
 
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 {
@@ -640,8 +600,6 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 		reshade::register_event<reshade::addon_event::draw_indexed>(on_draw_indexed);
 		reshade::register_event<reshade::addon_event::clear_depth_stencil_view>(on_clear_depth);
 		reshade::register_event<reshade::addon_event::present>(on_present);
-		reshade::register_event<reshade::addon_event::reshade_begin_effects>(on_begin_effects);
-		reshade::register_event<reshade::addon_event::reshade_reloaded_effects>(update_depth_binding);
 		reshade::register_overlay(nullptr, draw_settings);
 		break;
 

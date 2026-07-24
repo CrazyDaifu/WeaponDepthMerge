@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1 RC12 - 2026-07-24
+
+- Removed the add-on-owned INTZ shader-resource view.
+- Removed all `reshade_begin_effects`, `reshade_reloaded_effects`, and `update_texture_bindings("DEPTH", ...)` integration.
+- Generic Depth now exclusively owns and binds the `DEPTH` SRV for the same INTZ resource that receives the merged first-person geometry.
+- This eliminates WeaponDepthMerge participation in ReShade Shader reloads while preserving the D3D9 depth replay path.
+
 ## 1.1 RC11 - 2026-07-24
 
 - Rebased the implementation on the minimal RC1 code path: version 1.0 depth merging plus only the cross-API/null guards required for DXVK startup safety.
