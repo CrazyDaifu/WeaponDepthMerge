@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1 RC8 - 2026-07-24
+
+- Check native D3D9 cooperative-level state before selecting or creating the combined depth view.
+- Avoid resource-view creation during map loading and device-reset transitions.
+- Retain RC7's null-state guard and post-reload cooldown.
+- Awaiting runtime confirmation.
+
 ## 1.1 RC7 - 2026-07-24
 
 - Fixed a null-state dereference in the effects callback when the menu has no selected depth buffer.

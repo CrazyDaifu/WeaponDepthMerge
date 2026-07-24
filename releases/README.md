@@ -10,6 +10,7 @@ Each completed release keeps its tested binary and checksum in a versioned direc
 - `1.1-rc5/`: candidate that removes per-frame global `DEPTH` binding updates during ReShade effect reload.
 - `1.1-rc6/`: candidate that disables all depth interception during the full ReShade effect-reload transition.
 - `1.1-rc7/`: candidate that adds the main-menu null-state guard and a 120-frame post-reload cooldown; awaiting runtime confirmation.
+- `1.1-rc8/`: candidate that checks D3D9 cooperative state before depth-view selection during map loading and reset transitions.
 - `1.1/`: generated only after RC6 passes native D3D9, DXVK startup, and repeated Alt+Tab tests.
 
 Development output remains under `build/` and may be overwritten by a rebuild. Files under `releases/<version>/` are frozen baselines and must not be overwritten by another version.

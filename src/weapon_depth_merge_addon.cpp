@@ -274,6 +274,10 @@ static bool is_target_draw(device_state &state)
 	if (!s_enabled || state.suspended || state.focus_paused || state.effects_reload_pending || state.primitive_up_pending || state.current_dsv == 0)
 		return false;
 
+	// Resource-view creation is unsafe while D3D9 is resetting during map loading.
+	if (!is_interception_ready(state))
+		return false;
+
 	if (state.combined_dsv == 0)
 		select_combined_depth(state, state.current_dsv);
 

@@ -30,7 +30,7 @@ Version 1.1 makes every cross-API callback return without side effects unless th
 - RC3 result: near-100% Alt+Tab crash/freeze rate
 - RC4 result: pending/obsolete for this shader-reload investigation
 - RC5 result: improved reload speed but still insufficient
-- Current candidate fix: 1.1 RC7
+- Current candidate fix: 1.1 RC8
 - Final fixed version: pending runtime confirmation
 - Environment: Battlefield 2 in both native D3D9 and the tested DXVK configuration
 - Symptom: after switching to another application and returning to the game, the image becomes much darker (almost black), then the game freezes and eventually exits
@@ -49,7 +49,7 @@ RC3 additionally detected whether the Battlefield 2 process owned the foreground
 
 The new RC5 hypothesis is that `on_begin_effects` called `update_texture_bindings("DEPTH", ...)` every frame. ReShade's implementation walks all loaded effects and permutations and rewrites matching descriptors. During Alt+Tab, ReShade is already rebuilding those effects; repeating this global update on every frame can substantially slow reload and increase reset/reload contention. RC5 caches the last bound view and updates only on a real change or the explicit `reshade_reloaded_effects` event.
 
-RC6 extended that fix by marking the effect-reload transition as pending. RC7 additionally guards the null state that occurs when the main menu has no depth buffer and keeps the add-on inert for 120 effect frames after the reload event. This avoids touching D3D9 state while ReShade is still settling descriptors and shader permutations.
+RC6 extended that fix by marking the effect-reload transition as pending. RC7 additionally guards the null state that occurs when the main menu has no depth buffer and keeps the add-on inert for 120 effect frames after the reload event. RC8 also checks the D3D9 cooperative level before selecting or creating any depth view, preventing map-load/reset resource work on a lost device.
 
 ### Expected behavior after the fix
 
