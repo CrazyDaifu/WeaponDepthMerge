@@ -4,7 +4,7 @@
 
 - First affected version: 1.0
 - Candidate fix: 1.1 RC1
-- Runtime confirmation: fixed in 1.1 RC1; RC3 failed; final `v1.1` is still pending the RC5 regression test
+- Runtime confirmation: fixed in 1.1 RC1; RC3 failed; final `v1.1` is still pending the RC6 regression test
 - Environment: Battlefield 2 using DXVK, with ReShade attached to Vulkan
 - Symptom: black screen followed by a silent process exit before reaching the game
 
@@ -29,7 +29,8 @@ Version 1.1 makes every cross-API callback return without side effects unless th
 - Partial fix: 1.1 RC2 removes the near-black/dark return frame, but the hang remains in roughly two out of three attempts
 - RC3 result: near-100% Alt+Tab crash/freeze rate
 - RC4 result: pending/obsolete for this shader-reload investigation
-- Current candidate fix: 1.1 RC5
+- RC5 result: improved reload speed but still insufficient
+- Current candidate fix: 1.1 RC6
 - Final fixed version: pending runtime confirmation
 - Environment: Battlefield 2 in both native D3D9 and the tested DXVK configuration
 - Symptom: after switching to another application and returning to the game, the image becomes much darker (almost black), then the game freezes and eventually exits
@@ -47,6 +48,8 @@ RC2 checks `TestCooperativeLevel` and every relevant D3D9 state operation. It st
 RC3 additionally detected whether the Battlefield 2 process owned the foreground window and attempted to resume after 30 presents. Runtime testing showed a near-100% crash/freeze rate, so this recovery approach is rejected. RC4 permanently disables interception on the first focus loss for the current process, restores fixed callback registration, and avoids double-releasing the combined depth view when ReShade destroys resource views during reset.
 
 The new RC5 hypothesis is that `on_begin_effects` called `update_texture_bindings("DEPTH", ...)` every frame. ReShade's implementation walks all loaded effects and permutations and rewrites matching descriptors. During Alt+Tab, ReShade is already rebuilding those effects; repeating this global update on every frame can substantially slow reload and increase reset/reload contention. RC5 caches the last bound view and updates only on a real change or the explicit `reshade_reloaded_effects` event.
+
+RC6 extends that fix: the add-on marks the entire effect-reload transition as pending and bypasses all depth interception until the first `reshade_begin_effects` callback after the reload has completed. This keeps plugin D3D9 state manipulation out of ReShade's shader destruction/recreation window.
 
 ### Expected behavior after the fix
 

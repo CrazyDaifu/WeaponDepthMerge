@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1 RC6 - 2026-07-24
+
+- Recorded the refined scope: normal runtime Shader loading is not measurably slowed; the slowdown occurs during Alt+Tab effect reload only.
+- Suspend all depth interception while ReShade reports an effect reload transition.
+- Avoid `DEPTH` binding updates during the transition and resume them only from the first effects frame after reload completion.
+- Awaiting native D3D9 and DXVK runtime confirmation.
+
 ## 1.1 RC5 - 2026-07-24
 
 - Reduced repeated ReShade `DEPTH` semantic updates during effect rendering.

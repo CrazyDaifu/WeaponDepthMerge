@@ -128,6 +128,7 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 	bool primitive_up_pending = false;
 	bool suspended = false;
 	bool focus_paused = false;
+	bool effects_reload_pending = false;
 	uint64_t merged_drawcalls = 0;
 	uint64_t skipped_up_drawcalls = 0;
 	uint64_t failed_drawcalls = 0;
@@ -269,7 +270,7 @@ static bool select_combined_depth(device_state &state, resource_view dsv)
 
 static bool is_target_draw(device_state &state)
 {
-	if (!s_enabled || state.suspended || state.focus_paused || state.primitive_up_pending || state.current_dsv == 0)
+	if (!s_enabled || state.suspended || state.focus_paused || state.effects_reload_pending || state.primitive_up_pending || state.current_dsv == 0)
 		return false;
 
 	if (state.combined_dsv == 0)
@@ -297,7 +298,7 @@ static bool replay_weapon_draw(command_list *cmd_list, DrawCall &&draw_call)
 
 	if (!state.weapon_phase)
 		return false;
-	if (!is_interception_ready(state))
+	if (!is_interception_ready(state) || state.effects_reload_pending)
 		return false;
 
 	if (!create_scratch_depth(state))
@@ -640,9 +641,12 @@ static void on_reloaded_effects(effect_runtime *runtime)
 		return;
 
 	if (device_state *const state = runtime->get_device()->get_private_data<device_state>())
+	{
+		// ReShade emits this both before destroying old effects and after rebuilding
+		// the effect list. Do not touch depth bindings while that transition is active.
+		state->effects_reload_pending = true;
 		state->bound_depth_srv = { 0 };
-
-	update_depth_binding(runtime);
+	}
 }
 
 static void on_begin_effects(effect_runtime *runtime, command_list *cmd_list, resource_view, resource_view)
@@ -651,6 +655,11 @@ static void on_begin_effects(effect_runtime *runtime, command_list *cmd_list, re
 		return;
 
 	device_state *const state = runtime->get_device()->get_private_data<device_state>();
+	if (state != nullptr && state->effects_reload_pending)
+	{
+		state->effects_reload_pending = false;
+		state->bound_depth_srv = { 0 };
+	}
 	const bool device_ready = state != nullptr && is_interception_ready(*state);
 	update_depth_binding(runtime);
 	if (!device_ready || state->combined_srv == 0)
@@ -750,7 +759,7 @@ static void load_config()
 }
 
 extern "C" __declspec(dllexport) const char *NAME = "Weapon Depth Merge";
-extern "C" __declspec(dllexport) const char *DESCRIPTION = "Weapon Depth Merge 1.1 RC5 for native D3D9 x86 and ReShade 6.7.3.";
+extern "C" __declspec(dllexport) const char *DESCRIPTION = "Weapon Depth Merge 1.1 RC6 for native D3D9 x86 and ReShade 6.7.3.";
 
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 {
