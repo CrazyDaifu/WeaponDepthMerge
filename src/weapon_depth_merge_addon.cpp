@@ -633,7 +633,13 @@ static void update_depth_binding(effect_runtime *runtime)
 	if (state == nullptr)
 		return;
 
-	const resource_view srv = state != nullptr && !state->suspended && !state->focus_paused ? state->combined_srv : resource_view { 0 };
+	// Once focus is lost or the device is suspended, leave ReShade's existing
+	// descriptors untouched. Calling update_texture_bindings during a reset or
+	// a second effect reload can race ReShade's descriptor rebuild.
+	if (state->suspended || state->focus_paused || state->effects_reload_pending || state->combined_srv == 0)
+		return;
+
+	const resource_view srv = state->combined_srv;
 	if (state->bound_depth_srv == srv)
 		return;
 	state->bound_depth_srv = srv;

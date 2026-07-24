@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1 RC9 - 2026-07-24
+
+- Stop calling ReShade's global `update_texture_bindings` after focus loss, while the device is suspended, during an effect reload, or when no combined depth view exists.
+- Preserve ReShade's existing descriptors instead of forcing a `DEPTH` clear during the second Alt+Tab or Esc-menu reload path.
+- Retain RC8's map-transition cooperative-level guard.
+- Awaiting runtime confirmation.
+
 ## 1.1 RC8 - 2026-07-24
 
 - Check native D3D9 cooperative-level state before selecting or creating the combined depth view.
