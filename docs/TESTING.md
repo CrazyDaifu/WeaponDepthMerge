@@ -11,11 +11,11 @@
 
 Initial native D3D9 functional testing confirmed that depth merging works; later focus-switch testing exposed WDM-002.
 
-## RC16 passive-state callback isolation
+## RC17 `bind_vertex_buffers` isolation
 
-RC16 is not a functional depth-merge candidate. Disable ShaderToggler and Generic Depth, then install only `WeaponDepthMerge.addon32`. ReShade should list the add-on as loaded, but there should be no WeaponDepthMerge settings page and no depth merge. Lifecycle and passive render-state callbacks are active; draw and clear callbacks remain absent.
+RC17 is not a functional depth-merge candidate. Disable ShaderToggler and Generic Depth, then install only `WeaponDepthMerge.addon32`. ReShade should list the add-on as loaded, but there should be no WeaponDepthMerge settings page and no depth merge. It retains RC16's passive callbacks except `bind_vertex_buffers`; draw and clear callbacks remain absent.
 
-Test main-menu Alt+Tab, in-map Alt+Tab twice, and Esc after the first return. RC14 and RC15 passed. If RC16 crashes, split the passive callback group. If it remains stable, isolate draw and depth-clear interception next.
+Test main-menu Alt+Tab, in-map Alt+Tab twice, and Esc after the first return. RC14 and RC15 passed; RC16 failed every case. If RC17 passes, the ReShade 6.7.3 fake `DrawPrimitiveUP` buffer path is confirmed as the trigger. If it fails, split the other four passive callbacks.
 
 ## Alt+Tab/device-reset regression
 

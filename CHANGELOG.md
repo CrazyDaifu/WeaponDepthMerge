@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1 RC17 - 2026-07-24
+
+- RC16 reproduced every reported Alt+Tab/Esc failure after passive callbacks were enabled.
+- Source analysis identified ReShade 6.7.3's D3D9 `bind_vertex_buffers` event path as the primary suspect: it enables fake `DrawPrimitiveUP` buffers whose released handles are not cleared during Reset before a later `get_resource_desc` call.
+- Removes only `bind_vertex_buffers` from RC16 while retaining resource-view destruction, render-target/depth binding, viewport, present, and lifecycle callbacks.
+- Still contains no draw, depth-clear, effect-runtime, overlay, or depth-merge behavior.
+
 ## 1.1 RC16 - 2026-07-24
 
 - RC15 passed all reported Alt+Tab and Esc cases with lifecycle callbacks active.

@@ -587,7 +587,7 @@ static void load_config()
 }
 
 extern "C" __declspec(dllexport) const char *NAME = "Weapon Depth Merge";
-extern "C" __declspec(dllexport) const char *DESCRIPTION = "Weapon Depth Merge 1.1 RC16 passive-state callback diagnostic for ReShade 6.7.3.";
+extern "C" __declspec(dllexport) const char *DESCRIPTION = "Weapon Depth Merge 1.1 RC17 without D3D9 bind-vertex-buffer events for ReShade 6.7.3.";
 
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 {
@@ -604,7 +604,6 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 		reshade::register_event<reshade::addon_event::destroy_resource_view>(on_destroy_resource_view);
 		reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(on_bind_render_targets);
 		reshade::register_event<reshade::addon_event::bind_viewports>(on_bind_viewports);
-		reshade::register_event<reshade::addon_event::bind_vertex_buffers>(on_bind_vertex_buffers);
 		reshade::register_event<reshade::addon_event::present>(on_present);
 		break;
 
