@@ -13,7 +13,7 @@ Initial native D3D9 functional testing confirmed that depth merging works; later
 
 ## Alt+Tab/device-reset regression
 
-Version 1.0 and 1.1 RC1 can become very dark, freeze, and eventually exit after switching away from Battlefield 2 and back. RC2 prevents the dark frame but still hangs frequently. RC3 made the crash rate near 100%. RC4 permanently disables interception after focus loss and avoids dynamic event changes during reset.
+Version 1.0 and 1.1 RC1 can become very dark, freeze, and eventually exit after switching away from Battlefield 2 and back. RC2 prevents the dark frame but still hangs frequently. RC3 made the crash rate near 100%. RC4 permanently disables interception after focus loss. RC5 additionally removes the per-frame global `DEPTH` binding update that can slow ReShade's shader reload.
 
 Run this test in both native D3D9 and DXVK:
 

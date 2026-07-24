@@ -4,7 +4,7 @@
 
 - First affected version: 1.0
 - Candidate fix: 1.1 RC1
-- Runtime confirmation: fixed in 1.1 RC1; RC3 failed; final `v1.1` is still pending the RC4 regression test
+- Runtime confirmation: fixed in 1.1 RC1; RC3 failed; final `v1.1` is still pending the RC5 regression test
 - Environment: Battlefield 2 using DXVK, with ReShade attached to Vulkan
 - Symptom: black screen followed by a silent process exit before reaching the game
 
@@ -28,7 +28,8 @@ Version 1.1 makes every cross-API callback return without side effects unless th
 - Also affected: 1.1 RC1
 - Partial fix: 1.1 RC2 removes the near-black/dark return frame, but the hang remains in roughly two out of three attempts
 - RC3 result: near-100% Alt+Tab crash/freeze rate
-- Current candidate fix: 1.1 RC4
+- RC4 result: pending/obsolete for this shader-reload investigation
+- Current candidate fix: 1.1 RC5
 - Final fixed version: pending runtime confirmation
 - Environment: Battlefield 2 in both native D3D9 and the tested DXVK configuration
 - Symptom: after switching to another application and returning to the game, the image becomes much darker (almost black), then the game freezes and eventually exits
@@ -45,8 +46,10 @@ RC2 checks `TestCooperativeLevel` and every relevant D3D9 state operation. It st
 
 RC3 additionally detected whether the Battlefield 2 process owned the foreground window and attempted to resume after 30 presents. Runtime testing showed a near-100% crash/freeze rate, so this recovery approach is rejected. RC4 permanently disables interception on the first focus loss for the current process, restores fixed callback registration, and avoids double-releasing the combined depth view when ReShade destroys resource views during reset.
 
+The new RC5 hypothesis is that `on_begin_effects` called `update_texture_bindings("DEPTH", ...)` every frame. ReShade's implementation walks all loaded effects and permutations and rewrites matching descriptors. During Alt+Tab, ReShade is already rebuilding those effects; repeating this global update on every frame can substantially slow reload and increase reset/reload contention. RC5 caches the last bound view and updates only on a real change or the explicit `reshade_reloaded_effects` event.
+
 ### Expected behavior after the fix
 
-- Alt+Tab away and back: the game remains stable. Depth merging may remain disabled until process restart.
+- Alt+Tab away and back: ReShade shader reload should complete at normal speed without the plugin adding a per-frame global binding update.
 - Native D3D9 after recovery: depth merging resumes after command-list reinitialization.
 - DXVK/Vulkan: startup remains safe; Vulkan depth merging remains inactive.

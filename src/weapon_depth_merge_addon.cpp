@@ -58,6 +58,7 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 			owner->destroy_resource_view(combined_srv);
 		}
 		combined_srv = { 0 };
+		bound_depth_srv = { 0 };
 
 		if (scratch_dsv != nullptr)
 		{
@@ -112,6 +113,7 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 	resource_view combined_dsv = { 0 };
 	resource combined_resource = { 0 };
 	resource_view combined_srv = { 0 };
+	resource_view bound_depth_srv = { 0 };
 	IDirect3DSurface9 *scratch_dsv = nullptr;
 	uint32_t combined_width = 0;
 	uint32_t combined_height = 0;
@@ -622,8 +624,25 @@ static void update_depth_binding(effect_runtime *runtime)
 		return;
 
 	device_state *const state = runtime->get_device()->get_private_data<device_state>();
+	if (state == nullptr)
+		return;
+
 	const resource_view srv = state != nullptr && !state->suspended && !state->focus_paused ? state->combined_srv : resource_view { 0 };
+	if (state->bound_depth_srv == srv)
+		return;
+	state->bound_depth_srv = srv;
 	runtime->update_texture_bindings("DEPTH", srv, srv);
+}
+
+static void on_reloaded_effects(effect_runtime *runtime)
+{
+	if (runtime == nullptr || runtime->get_device()->get_api() != device_api::d3d9)
+		return;
+
+	if (device_state *const state = runtime->get_device()->get_private_data<device_state>())
+		state->bound_depth_srv = { 0 };
+
+	update_depth_binding(runtime);
 }
 
 static void on_begin_effects(effect_runtime *runtime, command_list *cmd_list, resource_view, resource_view)
@@ -731,7 +750,7 @@ static void load_config()
 }
 
 extern "C" __declspec(dllexport) const char *NAME = "Weapon Depth Merge";
-extern "C" __declspec(dllexport) const char *DESCRIPTION = "Weapon Depth Merge 1.1 RC3 for native D3D9 x86 and ReShade 6.7.3.";
+extern "C" __declspec(dllexport) const char *DESCRIPTION = "Weapon Depth Merge 1.1 RC5 for native D3D9 x86 and ReShade 6.7.3.";
 
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 {
@@ -755,7 +774,7 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 		reshade::register_event<reshade::addon_event::clear_depth_stencil_view>(on_clear_depth);
 		reshade::register_event<reshade::addon_event::present>(on_present);
 		reshade::register_event<reshade::addon_event::reshade_begin_effects>(on_begin_effects);
-		reshade::register_event<reshade::addon_event::reshade_reloaded_effects>(update_depth_binding);
+		reshade::register_event<reshade::addon_event::reshade_reloaded_effects>(on_reloaded_effects);
 		reshade::register_overlay(nullptr, draw_settings);
 		break;
 
@@ -773,7 +792,7 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 		reshade::unregister_event<reshade::addon_event::clear_depth_stencil_view>(on_clear_depth);
 		reshade::unregister_event<reshade::addon_event::present>(on_present);
 		reshade::unregister_event<reshade::addon_event::reshade_begin_effects>(on_begin_effects);
-		reshade::unregister_event<reshade::addon_event::reshade_reloaded_effects>(update_depth_binding);
+		reshade::unregister_event<reshade::addon_event::reshade_reloaded_effects>(on_reloaded_effects);
 		reshade::unregister_overlay(nullptr, draw_settings);
 		reshade::unregister_addon(module);
 		break;

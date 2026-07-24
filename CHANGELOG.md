@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1 RC5 - 2026-07-24
+
+- Reduced repeated ReShade `DEPTH` semantic updates during effect rendering.
+- Update the binding only when the resource view changes or ReShade reports that effects finished reloading.
+- Targets the observed Alt+Tab regression where ReShade shader reload becomes slow and often crashes while the add-on is installed.
+- Awaiting native D3D9 and DXVK runtime confirmation.
+
 ## 1.1 RC4 - 2026-07-24
 
 - Recorded that RC3 still produced near-100% Alt+Tab crash/freeze rates in Battlefield 2.
