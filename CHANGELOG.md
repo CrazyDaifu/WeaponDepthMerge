@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1 RC13 - 2026-07-24
+
+- Identified the repeated native D3D9 crash as access violation `d3d9.dll + 0x120d13`, inside ReShade `get_resource_desc` while calling `GetType()` on an invalid D3D9 resource pointer.
+- Stop passing the event resource-view handle through `get_resource_from_view` and `get_resource_desc` during depth selection.
+- Query the currently bound native depth surface with `GetDepthStencilSurface`, validate it with `IDirect3DSurface9::GetDesc`, and hold an explicit reference until reset cleanup.
+- Retain RC12's complete separation from ReShade effect reload callbacks.
+
 ## 1.1 RC12 - 2026-07-24
 
 - Removed the add-on-owned INTZ shader-resource view.

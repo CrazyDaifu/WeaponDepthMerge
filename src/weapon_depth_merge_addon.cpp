@@ -49,6 +49,12 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 
 	void release_resources()
 	{
+		if (combined_surface != nullptr)
+		{
+			combined_surface->Release();
+			combined_surface = nullptr;
+		}
+
 		if (scratch_dsv != nullptr)
 		{
 			scratch_dsv->Release();
@@ -56,7 +62,6 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 		}
 
 		combined_dsv = { 0 };
-		combined_resource = { 0 };
 		combined_width = 0;
 		combined_height = 0;
 		candidate_format = format::unknown;
@@ -99,7 +104,7 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 	viewport current_viewport = {};
 
 	resource_view combined_dsv = { 0 };
-	resource combined_resource = { 0 };
+	IDirect3DSurface9 *combined_surface = nullptr;
 	IDirect3DSurface9 *scratch_dsv = nullptr;
 	uint32_t combined_width = 0;
 	uint32_t combined_height = 0;
@@ -174,24 +179,29 @@ static bool select_combined_depth(device_state &state, resource_view dsv)
 	if (dsv == 0 || state.combined_dsv != 0)
 		return state.combined_dsv == dsv;
 
-	device *const device = state.owner;
-	const resource resource = device->get_resource_from_view(dsv);
-	if (resource == 0)
+	// ReShade may emit a stale resource-view handle around D3D9 Reset. Query the
+	// currently bound native surface instead of dereferencing the event handle.
+	IDirect3DSurface9 *surface = nullptr;
+	if (state.native_device == nullptr || FAILED(state.native_device->GetDepthStencilSurface(&surface)) || surface == nullptr)
 		return false;
 
-	const resource_desc desc = device->get_resource_desc(resource);
-	if (desc.type != resource_type::texture_2d ||
-		desc.texture.samples != 1 ||
-		desc.texture.format != format::intz ||
-		desc.texture.width <= 512 ||
-		!viewport_matches(state.current_viewport, desc.texture.width, desc.texture.height))
+	D3DSURFACE_DESC desc = {};
+	constexpr D3DFORMAT intz_format = static_cast<D3DFORMAT>(MAKEFOURCC('I', 'N', 'T', 'Z'));
+	if (FAILED(surface->GetDesc(&desc)) ||
+		desc.MultiSampleType != D3DMULTISAMPLE_NONE ||
+		desc.Format != intz_format ||
+		desc.Width <= 512 ||
+		!viewport_matches(state.current_viewport, desc.Width, desc.Height))
+	{
+		surface->Release();
 		return false;
+	}
 
 	state.combined_dsv = dsv;
-	state.combined_resource = resource;
-	state.combined_width = desc.texture.width;
-	state.combined_height = desc.texture.height;
-	state.candidate_format = desc.texture.format;
+	state.combined_surface = surface;
+	state.combined_width = desc.Width;
+	state.combined_height = desc.Height;
+	state.candidate_format = format::intz;
 
 	char message[160];
 	std::snprintf(message, sizeof(message), "Weapon Depth Merge selected an INTZ depth buffer (%ux%u).", state.combined_width, state.combined_height);
@@ -236,7 +246,7 @@ static bool replay_weapon_draw(command_list *cmd_list, DrawCall &&draw_call)
 		return false;
 	}
 
-	IDirect3DSurface9 *const combined_surface = reinterpret_cast<IDirect3DSurface9 *>(state.combined_dsv.handle & ~1ull);
+	IDirect3DSurface9 *const combined_surface = state.combined_surface;
 	if (combined_surface == nullptr)
 		return false;
 
@@ -577,7 +587,7 @@ static void load_config()
 }
 
 extern "C" __declspec(dllexport) const char *NAME = "Weapon Depth Merge";
-extern "C" __declspec(dllexport) const char *DESCRIPTION = "Weapon Depth Merge 1.1 RC12 without effect-runtime binding hooks for native D3D9 x86 and ReShade 6.7.3.";
+extern "C" __declspec(dllexport) const char *DESCRIPTION = "Weapon Depth Merge 1.1 RC13 native DSV validation for native D3D9 x86 and ReShade 6.7.3.";
 
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 {
