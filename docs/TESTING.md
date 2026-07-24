@@ -11,11 +11,11 @@
 
 Initial native D3D9 functional testing confirmed that depth merging works; later focus-switch testing exposed WDM-002.
 
-## RC17 `bind_vertex_buffers` isolation
+## RC18 functional candidate
 
-RC17 is not a functional depth-merge candidate. Disable ShaderToggler and Generic Depth, then install only `WeaponDepthMerge.addon32`. ReShade should list the add-on as loaded, but there should be no WeaponDepthMerge settings page and no depth merge. It retains RC16's passive callbacks except `bind_vertex_buffers`; draw and clear callbacks remain absent.
+RC18 restores depth merging without registering `bind_vertex_buffers`. Enable Generic Depth, disable its preserve/copy-before-clear option, disable in-game MSAA, and install `WeaponDepthMerge.addon32`. Confirm that the WeaponDepthMerge settings page, full-resolution INTZ selection, and merged draw counter return.
 
-Test main-menu Alt+Tab, in-map Alt+Tab twice, and Esc after the first return. RC14 and RC15 passed; RC16 failed every case. If RC17 passes, the ReShade 6.7.3 fake `DrawPrimitiveUP` buffer path is confirmed as the trigger. If it fails, split the other four passive callbacks.
+First verify AO no longer passes through the weapon/arms. Then test main-menu Alt+Tab, in-map Alt+Tab twice, and Esc after the first return. RC17 passed every stability case and confirmed the fake `DrawPrimitiveUP` buffer trigger; RC18 must preserve that stability with the functional callbacks restored.
 
 ## Alt+Tab/device-reset regression
 

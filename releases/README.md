@@ -20,6 +20,7 @@ Each completed release keeps its tested binary and checksum in a versioned direc
 - `1.1-rc15/`: restores only device and command-list lifecycle callbacks after RC14 passed all reported failure cases.
 - `1.1-rc16/`: adds passive render-state callbacks while draw and depth-clear interception remain disabled.
 - `1.1-rc17/`: removes only `bind_vertex_buffers` from RC16 to test ReShade's stale fake `DrawPrimitiveUP` buffer path.
+- `1.1-rc18/`: restores depth merging without `bind_vertex_buffers`, using native draw-binding validation instead.
 - `1.1/`: generated only after a later functional candidate passes native D3D9, DXVK startup, and repeated Alt+Tab tests.
 
 Development output remains under `build/` and may be overwritten by a rebuild. Files under `releases/<version>/` are frozen baselines and must not be overwritten by another version.

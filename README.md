@@ -11,18 +11,20 @@ WeaponDepthMerge is an independent ReShade 6.7.3 add-on that merges native D3D9 
 - DXVK startup regression: fixed by 1.1 RC1; the Vulkan path remains inactive.
 - Target: D3D9, x86, ReShade 6.7.3 Full Add-on Support.
 - Output: `build/WeaponDepthMerge.addon32`.
-- Version: `1.1-rc17` diagnostic.
-- Current test target: verify the ReShade 6.7.3 D3D9 `bind_vertex_buffers`/`DrawPrimitiveUP` Reset hypothesis. This build intentionally has no depth merge functionality.
+- Version: `1.1-rc18` functional candidate.
+- Current test target: verify restored depth merging and repeated Reset/Alt+Tab stability without `bind_vertex_buffers`.
 - DXVK/Vulkan compatibility: safe no-op loading; depth merging remains native D3D9 only.
 
-## RC17 diagnostic installation
+## RC18 candidate installation
 
 1. Install the 32-bit D3D9 build of ReShade 6.7.3 with full add-on support.
 2. Copy `build/WeaponDepthMerge.addon32` beside ReShade's `d3d9.dll`.
-3. Keep ShaderToggler and Generic Depth disabled for this isolation test.
-4. Test main-menu Alt+Tab, in-map Alt+Tab twice, and Esc after returning to the game.
+3. Enable Generic Depth and disable its `Copy depth buffer before clear operations` option.
+4. Disable in-game MSAA.
+5. Start with `Clear index = 1` and `First-person depth bias = 0.5`.
+6. Verify depth merging, then test main-menu Alt+Tab, in-map Alt+Tab twice, and Esc after returning to the game.
 
-RC17 should be listed as loaded, but it intentionally has no settings page or depth merge behavior. It retains RC16's passive callbacks except `bind_vertex_buffers`; draw and depth-clear interception remain disabled.
+RC18 restores the settings page and depth merging. It never registers `bind_vertex_buffers`; ordinary draws are validated through native D3D9 stream/index state immediately before replay.
 
 ## How it works
 

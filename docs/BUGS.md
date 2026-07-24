@@ -30,7 +30,7 @@ Version 1.1 makes every cross-API callback return without side effects unless th
 - RC3 result: near-100% Alt+Tab crash/freeze rate
 - RC4 result: pending/obsolete for this shader-reload investigation
 - RC5 result: improved reload speed but still insufficient
-- Current diagnostic: 1.1 RC17 without `bind_vertex_buffers`
+- Current candidate fix: 1.1 RC18 functional build without `bind_vertex_buffers`
 - Final fixed version: pending runtime confirmation
 - Environment: Battlefield 2 in both native D3D9 and the tested DXVK configuration
 - Symptom: after switching to another application and returning to the game, the image becomes much darker (almost black), then the game freezes and eventually exits
@@ -55,7 +55,7 @@ The new RC5 hypothesis is that `on_begin_effects` called `update_texture_binding
 
 RC6 extended that fix by marking the effect-reload transition as pending. RC7-RC9 added further null, map-reset, and binding guards. RC10 disabled merging after the first post-activation reload, but runtime behavior remained identical even though depth merging stopped. RC11 returned to the minimal RC1 implementation and reproduced the same issue; the exact frozen 1.0 binary also reproduced it in the current environment. RC12 removed duplicate effect-runtime integration but still reproduced the issue. Windows event logs then showed a stable access violation at ReShade D3D9 offset `0x120d13`; disassembly maps this to `get_resource_desc` calling `GetType()` on an invalid resource pointer. RC13 stopped WeaponDepthMerge from using that API, but the same external offset still crashed. The second Reset and Shader rebuild complete successfully before the crash, so Shader compilation time is not causal. Disabling ShaderToggler and then Generic Depth made no difference; with Generic Depth disabled RC13 selected no INTZ resource and performed no merge. RC14 registered no callbacks and passed all reported Alt+Tab/Esc cases, followed by a clean ReShade shutdown. RC15 restored device and command-list lifecycle callbacks and also passed. RC16 added passive render-state tracking and reproduced every failure.
 
-The strongest RC16-specific candidate is `bind_vertex_buffers`. In ReShade 6.7.3 D3D9, registering that event activates fake buffers for `DrawPrimitiveUP` and `DrawIndexedPrimitiveUP`. `on_reset()` calls `resize_primitive_up_buffers(0, ...)`, which releases nonzero `_primitive_up_vertex_buffer` and `_primitive_up_index_buffer` handles without clearing them. A later UP draw enters the same function and calls `get_resource_desc` on the stale handle. The indexed-buffer creation branch also passes `_primitive_up_vertex_buffer` instead of `_primitive_up_index_buffer` as its output. RC17 removes only this event registration to test the complete source-level hypothesis.
+The RC16-specific trigger is `bind_vertex_buffers`. In ReShade 6.7.3 D3D9, registering that event activates fake buffers for `DrawPrimitiveUP` and `DrawIndexedPrimitiveUP`. `on_reset()` calls `resize_primitive_up_buffers(0, ...)`, which releases nonzero `_primitive_up_vertex_buffer` and `_primitive_up_index_buffer` handles without clearing them. A later UP draw enters the same function and calls `get_resource_desc` on the stale handle. The indexed-buffer creation branch also passes `_primitive_up_vertex_buffer` instead of `_primitive_up_index_buffer` as its output. RC17 removed only this event and passed every previously failing case, confirming the trigger. RC18 restores depth merging while permanently avoiding this event path.
 
 ### Expected behavior after the fix
 
