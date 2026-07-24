@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1 RC16 - 2026-07-24
+
+- RC15 passed all reported Alt+Tab and Esc cases with lifecycle callbacks active.
+- Restores passive `destroy_resource_view`, render-target/depth binding, viewport, vertex-buffer, and present callbacks.
+- Keeps draw, indexed-draw, depth-clear, effect-runtime, and overlay callbacks disabled, so no depth merging occurs.
+- Purpose: distinguish passive render-state tracking from draw/clear interception.
+
 ## 1.1 RC15 - 2026-07-24
 
 - RC14 passed main-menu Alt+Tab, repeated in-map Alt+Tab, and Esc-after-return testing; the game then exited normally.

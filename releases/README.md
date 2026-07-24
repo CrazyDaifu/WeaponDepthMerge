@@ -18,6 +18,7 @@ Each completed release keeps its tested binary and checksum in a versioned direc
 - `1.1-rc13/`: avoids stale ReShade resource handles by validating and retaining the currently bound native D3D9 depth surface.
 - `1.1-rc14/`: registration-only diagnostic with no callbacks, overlay, or depth merging.
 - `1.1-rc15/`: restores only device and command-list lifecycle callbacks after RC14 passed all reported failure cases.
+- `1.1-rc16/`: adds passive render-state callbacks while draw and depth-clear interception remain disabled.
 - `1.1/`: generated only after a later functional candidate passes native D3D9, DXVK startup, and repeated Alt+Tab tests.
 
 Development output remains under `build/` and may be overwritten by a rebuild. Files under `releases/<version>/` are frozen baselines and must not be overwritten by another version.
