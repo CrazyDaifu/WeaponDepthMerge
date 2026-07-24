@@ -587,7 +587,7 @@ static void load_config()
 }
 
 extern "C" __declspec(dllexport) const char *NAME = "Weapon Depth Merge";
-extern "C" __declspec(dllexport) const char *DESCRIPTION = "Weapon Depth Merge 1.1 RC13 native DSV validation for native D3D9 x86 and ReShade 6.7.3.";
+extern "C" __declspec(dllexport) const char *DESCRIPTION = "Weapon Depth Merge 1.1 RC14 registration-only diagnostic for ReShade 6.7.3.";
 
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 {
@@ -596,21 +596,6 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 	case DLL_PROCESS_ATTACH:
 		if (!reshade::register_addon(module))
 			return FALSE;
-
-		load_config();
-		reshade::register_event<reshade::addon_event::init_device>(on_init_device);
-		reshade::register_event<reshade::addon_event::destroy_device>(on_destroy_device);
-		reshade::register_event<reshade::addon_event::init_command_list>(on_init_command_list);
-		reshade::register_event<reshade::addon_event::destroy_command_list>(on_destroy_command_list);
-		reshade::register_event<reshade::addon_event::destroy_resource_view>(on_destroy_resource_view);
-		reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(on_bind_render_targets);
-		reshade::register_event<reshade::addon_event::bind_viewports>(on_bind_viewports);
-		reshade::register_event<reshade::addon_event::bind_vertex_buffers>(on_bind_vertex_buffers);
-		reshade::register_event<reshade::addon_event::draw>(on_draw);
-		reshade::register_event<reshade::addon_event::draw_indexed>(on_draw_indexed);
-		reshade::register_event<reshade::addon_event::clear_depth_stencil_view>(on_clear_depth);
-		reshade::register_event<reshade::addon_event::present>(on_present);
-		reshade::register_overlay(nullptr, draw_settings);
 		break;
 
 	case DLL_PROCESS_DETACH:

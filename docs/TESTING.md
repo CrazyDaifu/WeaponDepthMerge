@@ -11,6 +11,12 @@
 
 Initial native D3D9 functional testing confirmed that depth merging works; later focus-switch testing exposed WDM-002.
 
+## RC14 registration-only isolation
+
+RC14 is not a functional depth-merge candidate. Disable ShaderToggler and Generic Depth, then install only `WeaponDepthMerge.addon32`. ReShade should list the add-on as loaded, but there should be no WeaponDepthMerge settings page and no depth merge.
+
+Test main-menu Alt+Tab, in-map Alt+Tab twice, and Esc after the first return. If RC14 still crashes, add-on registration/loading itself is sufficient to reproduce WDM-002. If it remains stable, restore callback groups incrementally to locate the failing event interaction.
+
 ## Alt+Tab/device-reset regression
 
 Version 1.0 and 1.1 RC1 can become very dark, freeze, and eventually exit after switching away from Battlefield 2 and back. RC2 prevents the dark frame but still hangs frequently. RC3 made the crash rate near 100%. RC4 permanently disables interception after focus loss. RC5 additionally removes the per-frame global `DEPTH` binding update that can slow ReShade's shader reload.

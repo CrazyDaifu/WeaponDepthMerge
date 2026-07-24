@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1 RC14 - 2026-07-24
+
+- Registration-only diagnostic build: calls `register_addon` and `unregister_addon` but registers no ReShade events or overlay.
+- Contains no active depth merge behavior and is not a feature candidate.
+- Built after RC13 still crashed at `d3d9.dll + 0x120d13` with ShaderToggler and Generic Depth disabled and no INTZ candidate selected.
+- Purpose: distinguish add-on loading from event-callback interaction.
+
 ## 1.1 RC13 - 2026-07-24
 
 - Identified the repeated native D3D9 crash as access violation `d3d9.dll + 0x120d13`, inside ReShade `get_resource_desc` while calling `GetType()` on an invalid D3D9 resource pointer.

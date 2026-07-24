@@ -16,6 +16,7 @@ Each completed release keeps its tested binary and checksum in a versioned direc
 - `1.1-rc11/`: minimal RC1 baseline used to isolate regressions introduced by the later reset/reload state machine.
 - `1.1-rc12/`: removes the add-on SRV and all effect-runtime callbacks, relying on Generic Depth for `DEPTH` binding.
 - `1.1-rc13/`: avoids stale ReShade resource handles by validating and retaining the currently bound native D3D9 depth surface.
-- `1.1/`: generated only after RC6 passes native D3D9, DXVK startup, and repeated Alt+Tab tests.
+- `1.1-rc14/`: registration-only diagnostic with no callbacks, overlay, or depth merging.
+- `1.1/`: generated only after a later functional candidate passes native D3D9, DXVK startup, and repeated Alt+Tab tests.
 
 Development output remains under `build/` and may be overwritten by a rebuild. Files under `releases/<version>/` are frozen baselines and must not be overwritten by another version.
