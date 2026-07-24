@@ -6,6 +6,8 @@
 - Stop passing the event resource-view handle through `get_resource_from_view` and `get_resource_desc` during depth selection.
 - Query the currently bound native depth surface with `GetDepthStencilSurface`, validate it with `IDirect3DSurface9::GetDesc`, and hold an explicit reference until reset cleanup.
 - Retain RC12's complete separation from ReShade effect reload callbacks.
+- Runtime result: depth merging still works, but all Alt+Tab/menu crashes remain and the crash offset is still `d3d9.dll + 0x120d13`.
+- Corrected scope: the brief desktop switch during map startup is a Battlefield 2/Windows compatibility behavior, not a WeaponDepthMerge regression.
 
 ## 1.1 RC12 - 2026-07-24
 

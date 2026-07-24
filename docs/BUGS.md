@@ -35,6 +35,10 @@ Version 1.1 makes every cross-API callback return without side effects unless th
 - Environment: Battlefield 2 in both native D3D9 and the tested DXVK configuration
 - Symptom: after switching to another application and returning to the game, the image becomes much darker (almost black), then the game freezes and eventually exits
 
+### Scope correction
+
+The brief desktop switch while starting a Battlefield 2 map is a game/Windows compatibility behavior and is not caused by ReShade or WeaponDepthMerge. It is excluded from WDM-002. The remaining confirmed scope is Alt+Tab recovery and the Esc/menu transition after an Alt+Tab.
+
 ### Cause assessment
 
 Alt+Tab causes a D3D9 lost-device/reset transition. Versions 1.0 and RC1 assumed every native state read, state write, depth-surface switch, clear, and replay operation succeeded. During the transition, failed `GetViewport` or `GetRenderState` calls could leave zero-initialized values that were then written back. A failed scratch-depth switch after the depth-only replay could also suppress the game's original color draw. Both paths can explain the dark frame and subsequent invalid rendering state.
@@ -49,7 +53,7 @@ RC3 additionally detected whether the Battlefield 2 process owned the foreground
 
 The new RC5 hypothesis is that `on_begin_effects` called `update_texture_bindings("DEPTH", ...)` every frame. ReShade's implementation walks all loaded effects and permutations and rewrites matching descriptors. During Alt+Tab, ReShade is already rebuilding those effects; repeating this global update on every frame can substantially slow reload and increase reset/reload contention. RC5 caches the last bound view and updates only on a real change or the explicit `reshade_reloaded_effects` event.
 
-RC6 extended that fix by marking the effect-reload transition as pending. RC7-RC9 added further null, map-reset, and binding guards. RC10 disabled merging after the first post-activation reload, but runtime behavior remained identical even though depth merging stopped. RC11 returned to the minimal RC1 implementation and reproduced the same issue; the exact frozen 1.0 binary also reproduced it in the current environment. RC12 removed duplicate effect-runtime integration but still reproduced the issue. Windows event logs then showed a stable access violation at ReShade D3D9 offset `0x120d13`; disassembly maps this to `get_resource_desc` calling `GetType()` on an invalid resource pointer. RC13 avoids that path and validates the currently bound native DSV directly.
+RC6 extended that fix by marking the effect-reload transition as pending. RC7-RC9 added further null, map-reset, and binding guards. RC10 disabled merging after the first post-activation reload, but runtime behavior remained identical even though depth merging stopped. RC11 returned to the minimal RC1 implementation and reproduced the same issue; the exact frozen 1.0 binary also reproduced it in the current environment. RC12 removed duplicate effect-runtime integration but still reproduced the issue. Windows event logs then showed a stable access violation at ReShade D3D9 offset `0x120d13`; disassembly maps this to `get_resource_desc` calling `GetType()` on an invalid resource pointer. RC13 stopped WeaponDepthMerge from using that API, but the same external offset still crashed. The latest log shows the second Reset and Shader rebuild complete successfully before the crash, so Shader compilation time is not causal. The active environment also loads legacy API-v2 `ShaderToggler.addon32`; an isolated run without that add-on is required to identify which component supplies the stale resource.
 
 ### Expected behavior after the fix
 
