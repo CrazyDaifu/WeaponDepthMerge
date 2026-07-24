@@ -1,27 +1,31 @@
 # WeaponDepthMerge
 
-WeaponDepthMerge is an independent ReShade 6.7.3 add-on that merges D3D9 first-person weapon/cockpit geometry into the scene depth buffer. Its first confirmed target is the 32-bit Direct3D 9 version of Battlefield 2.
+WeaponDepthMerge is an independent ReShade 6.7.3 add-on that merges native D3D9 first-person weapon/cockpit geometry into the scene depth buffer. Its first confirmed target is the 32-bit Direct3D 9 version of Battlefield 2.
 
 战地 2 会分别渲染场景、第一人称武器和手臂。普通 ReShade 深度只能得到不完整的结果，AO 等深度特效可能穿过手臂或武器。本插件在选定的深度清除点之后，将第一人称几何额外写入保留下来的 INTZ 场景深度，同时维持游戏正常的武器颜色和遮挡渲染。
 
 ## Current status
 
 - Battlefield 2 runtime test: successful.
-- Initial tester report: the feature works; no bug observed so far.
+- Native D3D9 depth merge: runtime-confirmed working.
+- DXVK/Vulkan startup compatibility: runtime-confirmed fixed; the Vulkan path remains intentionally inactive.
 - Target: D3D9, x86, ReShade 6.7.3 Full Add-on Support.
 - Output: `build/WeaponDepthMerge.addon32`.
-- Version: `1.0`.
+- Version: `1.1`.
+- Native D3D9 result: depth merging and all reported Reset/Alt+Tab/Esc cases pass.
+- DXVK/Vulkan result: startup, menu/map flow, and safe inactive operation pass.
+- DXVK/Vulkan compatibility: safe no-op loading; depth merging remains native D3D9 only.
 
-## Quick installation
+## Installation
 
 1. Install the 32-bit D3D9 build of ReShade 6.7.3 with full add-on support.
 2. Copy `build/WeaponDepthMerge.addon32` beside ReShade's `d3d9.dll`.
-3. Keep Generic Depth enabled.
-4. Disable Generic Depth's `Copy depth buffer before clear operations` option.
-5. Disable in-game MSAA.
-6. Start with `Clear index = 1` and `First-person depth bias = 0.5`.
+3. Enable Generic Depth and disable its `Copy depth buffer before clear operations` option.
+4. Disable in-game MSAA.
+5. Start with `Clear index = 1` and `First-person depth bias = 0.5`.
+6. Verify depth merging, then test main-menu Alt+Tab, in-map Alt+Tab twice, and Esc after returning to the game.
 
-The add-on page should show a full-resolution `Combined INTZ` buffer and an increasing `Merged draw calls` counter.
+Version 1.1 never registers `bind_vertex_buffers`; ordinary draws are validated through native D3D9 stream/index state immediately before replay.
 
 ## How it works
 
@@ -30,7 +34,7 @@ After the chosen meaningful depth clear, each ordinary D3D9 draw is replayed twi
 1. Depth-only replay into the preserved INTZ scene depth, using the historical `MinZ/MaxZ - 0.5` viewport bias.
 2. Normal game draw against a separate clearable scratch depth surface.
 
-The merged INTZ view is then bound to ReShade effects through the `DEPTH` semantic. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the detailed state machine.
+Generic Depth binds its existing INTZ shader-resource view to the `DEPTH` semantic; WeaponDepthMerge only writes the additional first-person geometry into that same resource. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 
 ## Offline build
 
@@ -53,6 +57,7 @@ GitHub Actions builds the same Win32 target with Visual Studio 2022 `v143`, veri
 | `src/` | Add-on implementation |
 | `WeaponDepthMerge.sln` | Visual Studio solution |
 | `build/` | Confirmed x86 binary and generated build output |
+| `releases/` | Frozen binaries and checksums for previous versions |
 | `third_party/` | Vendored ReShade API and Dear ImGui dependencies |
 | `reference_sources/` | Offline historical and official source references |
 | `docs/` | Architecture, building, and testing documentation |
@@ -60,7 +65,7 @@ GitHub Actions builds the same Win32 target with Visual Studio 2022 `v143`, veri
 
 ## Publish to GitHub
 
-Double-click `publish-to-github.cmd` (or `上传到GitHub.cmd`). The script installs GitHub CLI through winget when needed, opens GitHub login, creates the repository, pushes `main` and tag `v1.0`, triggers the online build, and creates the 1.0 release automatically.
+Double-click `publish-to-github.cmd` (or `上传到GitHub.cmd`) to push the current release branch and trigger the online build. It does not create the final `v1.1` tag unless `-PublishRelease` is explicitly supplied after runtime testing.
 
 See [docs/PUBLISHING.md](docs/PUBLISHING.md) for repository-name and visibility options.
 
@@ -71,6 +76,7 @@ The implementation is based on official ReShade 6.7.3 and Thalixte's verified co
 ## Limitations
 
 - D3D9 x86 only.
+- DXVK/Vulkan is startup-safe in 1.1, but the merge feature is inactive there.
 - No MSAA support yet.
 - UP draw calls are intentionally not merged.
 - The selected clear boundary may need adjustment in another game.
@@ -82,8 +88,10 @@ The implementation is based on official ReShade 6.7.3 and Thalixte's verified co
 - [Project handoff / 项目移交](_项目移交.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Testing](docs/TESTING.md)
+- [Bug history](docs/BUGS.md)
 - [Offline building](docs/BUILDING.md)
 - [Publishing to GitHub](docs/PUBLISHING.md)
+- [ReShade project management and one-click GitHub publishing](docs/ReShade项目管理与GitHub一键发布流程.md)
 - [Sources](SOURCES.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 

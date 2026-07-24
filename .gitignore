@@ -10,6 +10,9 @@ build/*.ilk
 build/*.lib
 build/*.pdb
 build/WeaponDepthMerge.lib
+releases/*/WeaponDepthMerge.pdb
+releases/*/WeaponDepthMerge.lib
+releases/*/WeaponDepthMerge.exp
 
 # Local test files and logs
 test-game/

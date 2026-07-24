@@ -8,7 +8,8 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $parent = Split-Path -Parent $repoRoot
 
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-    $OutputPath = Join-Path $parent 'WeaponDepthMerge-1.0-GitHub.zip'
+    $version = (Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'VERSION')).Trim()
+    $OutputPath = Join-Path $parent "WeaponDepthMerge-$version-GitHub.zip"
 }
 
 if (Test-Path -LiteralPath $OutputPath) {

@@ -49,10 +49,10 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 
 	void release_resources()
 	{
-		if (combined_srv != 0)
+		if (combined_surface != nullptr)
 		{
-			owner->destroy_resource_view(combined_srv);
-			combined_srv = { 0 };
+			combined_surface->Release();
+			combined_surface = nullptr;
 		}
 
 		if (scratch_dsv != nullptr)
@@ -62,7 +62,6 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 		}
 
 		combined_dsv = { 0 };
-		combined_resource = { 0 };
 		combined_width = 0;
 		combined_height = 0;
 		candidate_format = format::unknown;
@@ -79,7 +78,6 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 		current_segment = {};
 		meaningful_clear_count = 0;
 		weapon_phase = false;
-		primitive_up_pending = false;
 
 		uint64_t best_vertices = 0;
 		auto_clear_index = 1;
@@ -105,8 +103,7 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 	viewport current_viewport = {};
 
 	resource_view combined_dsv = { 0 };
-	resource combined_resource = { 0 };
-	resource_view combined_srv = { 0 };
+	IDirect3DSurface9 *combined_surface = nullptr;
 	IDirect3DSurface9 *scratch_dsv = nullptr;
 	uint32_t combined_width = 0;
 	uint32_t combined_height = 0;
@@ -118,14 +115,16 @@ struct __declspec(uuid("9fd929d7-1c89-4efc-93ae-36851155b324")) device_state
 	uint32_t meaningful_clear_count = 0;
 	uint32_t auto_clear_index = 1;
 	bool weapon_phase = false;
-	bool primitive_up_pending = false;
 	uint64_t merged_drawcalls = 0;
-	uint64_t skipped_up_drawcalls = 0;
+	uint64_t skipped_unbound_drawcalls = 0;
 	uint64_t failed_drawcalls = 0;
 };
 
 static device_state *get_state(command_list *cmd_list)
 {
+	if (cmd_list == nullptr || cmd_list->get_device()->get_api() != device_api::d3d9)
+		return nullptr;
+
 	return cmd_list->get_device()->get_private_data<device_state>();
 }
 
@@ -178,33 +177,29 @@ static bool select_combined_depth(device_state &state, resource_view dsv)
 	if (dsv == 0 || state.combined_dsv != 0)
 		return state.combined_dsv == dsv;
 
-	device *const device = state.owner;
-	const resource resource = device->get_resource_from_view(dsv);
-	if (resource == 0)
+	// ReShade may emit a stale resource-view handle around D3D9 Reset. Query the
+	// currently bound native surface instead of dereferencing the event handle.
+	IDirect3DSurface9 *surface = nullptr;
+	if (state.native_device == nullptr || FAILED(state.native_device->GetDepthStencilSurface(&surface)) || surface == nullptr)
 		return false;
 
-	const resource_desc desc = device->get_resource_desc(resource);
-	if (desc.type != resource_type::texture_2d ||
-		desc.texture.samples != 1 ||
-		desc.texture.format != format::intz ||
-		desc.texture.width <= 512 ||
-		!viewport_matches(state.current_viewport, desc.texture.width, desc.texture.height))
-		return false;
-
-	resource_view srv = { 0 };
-	const resource_view_desc srv_desc(resource_view_type::texture_2d, format_to_default_typed(desc.texture.format), 0, 1, 0, 1);
-	if (!device->create_resource_view(resource, resource_usage::shader_resource, srv_desc, &srv))
+	D3DSURFACE_DESC desc = {};
+	constexpr D3DFORMAT intz_format = static_cast<D3DFORMAT>(MAKEFOURCC('I', 'N', 'T', 'Z'));
+	if (FAILED(surface->GetDesc(&desc)) ||
+		desc.MultiSampleType != D3DMULTISAMPLE_NONE ||
+		desc.Format != intz_format ||
+		desc.Width <= 512 ||
+		!viewport_matches(state.current_viewport, desc.Width, desc.Height))
 	{
-		reshade::log::message(reshade::log::level::error, "Weapon Depth Merge found an INTZ depth buffer, but failed to create its shader resource view.");
+		surface->Release();
 		return false;
 	}
 
 	state.combined_dsv = dsv;
-	state.combined_resource = resource;
-	state.combined_srv = srv;
-	state.combined_width = desc.texture.width;
-	state.combined_height = desc.texture.height;
-	state.candidate_format = desc.texture.format;
+	state.combined_surface = surface;
+	state.combined_width = desc.Width;
+	state.combined_height = desc.Height;
+	state.candidate_format = format::intz;
 
 	char message[160];
 	std::snprintf(message, sizeof(message), "Weapon Depth Merge selected an INTZ depth buffer (%ux%u).", state.combined_width, state.combined_height);
@@ -214,7 +209,7 @@ static bool select_combined_depth(device_state &state, resource_view dsv)
 
 static bool is_target_draw(device_state &state)
 {
-	if (!s_enabled || state.primitive_up_pending || state.current_dsv == 0)
+	if (!s_enabled || state.current_dsv == 0)
 		return false;
 
 	if (state.combined_dsv == 0)
@@ -225,16 +220,47 @@ static bool is_target_draw(device_state &state)
 		viewport_matches(state.current_viewport, state.combined_width, state.combined_height);
 }
 
+static bool has_native_vertex_stream(device_state &state)
+{
+	if (state.native_device == nullptr)
+		return false;
+
+	IDirect3DVertexBuffer9 *stream = nullptr;
+	UINT offset = 0, stride = 0;
+	if (FAILED(state.native_device->GetStreamSource(0, &stream, &offset, &stride)))
+		return false;
+
+	const bool valid = stream != nullptr && stride != 0;
+	if (stream != nullptr)
+		stream->Release();
+	return valid;
+}
+
+static bool has_native_index_buffer(device_state &state)
+{
+	if (state.native_device == nullptr)
+		return false;
+
+	IDirect3DIndexBuffer9 *indices = nullptr;
+	if (FAILED(state.native_device->GetIndices(&indices)))
+		return false;
+
+	const bool valid = indices != nullptr;
+	if (indices != nullptr)
+		indices->Release();
+	return valid;
+}
+
 template <typename DrawCall>
 static bool replay_weapon_draw(command_list *cmd_list, DrawCall &&draw_call)
 {
-	device_state &state = *get_state(cmd_list);
-	if (!is_target_draw(state))
-	{
-		if (state.primitive_up_pending)
-			++state.skipped_up_drawcalls;
+	device_state *const state_ptr = get_state(cmd_list);
+	if (state_ptr == nullptr)
 		return false;
-	}
+
+	device_state &state = *state_ptr;
+	if (!is_target_draw(state))
+		return false;
 
 	if (!state.weapon_phase)
 		return false;
@@ -245,7 +271,7 @@ static bool replay_weapon_draw(command_list *cmd_list, DrawCall &&draw_call)
 		return false;
 	}
 
-	IDirect3DSurface9 *const combined_surface = reinterpret_cast<IDirect3DSurface9 *>(state.combined_dsv.handle & ~1ull);
+	IDirect3DSurface9 *const combined_surface = state.combined_surface;
 	if (combined_surface == nullptr)
 		return false;
 
@@ -309,19 +335,23 @@ static bool replay_weapon_draw(command_list *cmd_list, DrawCall &&draw_call)
 
 static void on_init_device(device *device)
 {
-	if (device->get_api() == device_api::d3d9)
+	if (device != nullptr && device->get_api() == device_api::d3d9)
+	{
 		device->create_private_data<device_state>(device);
+	}
 }
 
 static void on_destroy_device(device *device)
 {
-	if (device->get_api() == device_api::d3d9 && device->get_private_data<device_state>() != nullptr)
+	if (device != nullptr && device->get_api() == device_api::d3d9 && device->get_private_data<device_state>() != nullptr)
+	{
 		device->destroy_private_data<device_state>();
+	}
 }
 
 static void on_init_command_list(command_list *cmd_list)
 {
-	if (cmd_list->get_device()->get_api() != device_api::d3d9)
+	if (cmd_list == nullptr || cmd_list->get_device()->get_api() != device_api::d3d9)
 		return;
 
 	if (device_state *const state = get_state(cmd_list))
@@ -333,7 +363,7 @@ static void on_init_command_list(command_list *cmd_list)
 
 static void on_destroy_command_list(command_list *cmd_list)
 {
-	if (cmd_list->get_device()->get_api() != device_api::d3d9)
+	if (cmd_list == nullptr || cmd_list->get_device()->get_api() != device_api::d3d9)
 		return;
 
 	if (device_state *const state = get_state(cmd_list))
@@ -348,7 +378,7 @@ static void on_bind_render_targets(command_list *cmd_list, uint32_t, const resou
 
 static void on_destroy_resource_view(device *device, resource_view view)
 {
-	if (device->get_api() != device_api::d3d9)
+	if (device == nullptr || device->get_api() != device_api::d3d9)
 		return;
 
 	if (device_state *const state = device->get_private_data<device_state>();
@@ -368,44 +398,23 @@ static void on_bind_viewports(command_list *cmd_list, uint32_t first, uint32_t c
 		state->current_viewport = viewports[0];
 }
 
-static void on_bind_vertex_buffers(command_list *cmd_list, uint32_t first, uint32_t count, const resource *buffers, const uint64_t *, const uint32_t *)
-{
-	if (first != 0 || count == 0)
-		return;
-
-	device_state *const state = get_state(cmd_list);
-	if (state == nullptr)
-		return;
-
-	if (buffers[0] == 0)
-	{
-		state->primitive_up_pending = false;
-		return;
-	}
-
-	IDirect3DVertexBuffer9 *actual_stream = nullptr;
-	UINT offset = 0, stride = 0;
-	state->primitive_up_pending = false;
-	if (SUCCEEDED(state->native_device->GetStreamSource(0, &actual_stream, &offset, &stride)))
-	{
-		state->primitive_up_pending = reinterpret_cast<uint64_t>(actual_stream) != buffers[0].handle;
-		if (actual_stream != nullptr)
-			actual_stream->Release();
-	}
-}
-
 static bool on_draw(command_list *cmd_list, uint32_t vertices, uint32_t instances, uint32_t first_vertex, uint32_t first_instance)
 {
-	device_state &state = *get_state(cmd_list);
+	device_state *const state_ptr = get_state(cmd_list);
+	if (state_ptr == nullptr)
+		return false;
+
+	device_state &state = *state_ptr;
 	const bool target_draw = is_target_draw(state);
 	if (target_draw)
 	{
 		state.current_segment.vertices += static_cast<uint64_t>(vertices) * instances;
 		++state.current_segment.drawcalls;
 	}
-	else if (state.primitive_up_pending)
+
+	if (target_draw && state.weapon_phase && !has_native_vertex_stream(state))
 	{
-		++state.skipped_up_drawcalls;
+		++state.skipped_unbound_drawcalls;
 		return false;
 	}
 
@@ -416,16 +425,21 @@ static bool on_draw(command_list *cmd_list, uint32_t vertices, uint32_t instance
 
 static bool on_draw_indexed(command_list *cmd_list, uint32_t indices, uint32_t instances, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance)
 {
-	device_state &state = *get_state(cmd_list);
+	device_state *const state_ptr = get_state(cmd_list);
+	if (state_ptr == nullptr)
+		return false;
+
+	device_state &state = *state_ptr;
 	const bool target_draw = is_target_draw(state);
 	if (target_draw)
 	{
 		state.current_segment.vertices += static_cast<uint64_t>(indices) * instances;
 		++state.current_segment.drawcalls;
 	}
-	else if (state.primitive_up_pending)
+
+	if (target_draw && state.weapon_phase && (!has_native_vertex_stream(state) || !has_native_index_buffer(state)))
 	{
-		++state.skipped_up_drawcalls;
+		++state.skipped_unbound_drawcalls;
 		return false;
 	}
 
@@ -436,7 +450,11 @@ static bool on_draw_indexed(command_list *cmd_list, uint32_t indices, uint32_t i
 
 static bool on_clear_depth(command_list *cmd_list, resource_view dsv, const float *depth, const uint8_t *stencil, uint32_t rect_count, const rect *rects)
 {
-	device_state &state = *get_state(cmd_list);
+	device_state *const state_ptr = get_state(cmd_list);
+	if (state_ptr == nullptr)
+		return false;
+
+	device_state &state = *state_ptr;
 	if (!s_enabled || dsv == 0)
 		return false;
 
@@ -488,32 +506,24 @@ static bool on_clear_depth(command_list *cmd_list, resource_view dsv, const floa
 	return true;
 }
 
-static void update_depth_binding(effect_runtime *runtime)
-{
-	device_state *const state = runtime->get_device()->get_private_data<device_state>();
-	const resource_view srv = state != nullptr ? state->combined_srv : resource_view { 0 };
-	runtime->update_texture_bindings("DEPTH", srv, srv);
-}
-
-static void on_begin_effects(effect_runtime *runtime, command_list *cmd_list, resource_view, resource_view)
-{
-	device_state *const state = runtime->get_device()->get_private_data<device_state>();
-	if (state == nullptr || state->combined_srv == 0)
-		return;
-
-	// D3D9 cannot sample an INTZ texture while its surface is still bound as depth output.
-	cmd_list->bind_render_targets_and_depth_stencil(0, nullptr);
-	update_depth_binding(runtime);
-}
-
 static void on_present(command_queue *, swapchain *swapchain, const rect *, const rect *, uint32_t, const rect *)
 {
+	if (swapchain == nullptr || swapchain->get_device()->get_api() != device_api::d3d9)
+		return;
+
 	if (device_state *const state = swapchain->get_device()->get_private_data<device_state>())
 		state->reset_frame();
 }
 
 static void draw_settings(effect_runtime *runtime)
 {
+	if (runtime == nullptr || runtime->get_device()->get_api() != device_api::d3d9)
+	{
+		ImGui::TextUnformatted("Weapon Depth Merge 1.1 is inactive: this application is not using native D3D9.");
+		ImGui::TextWrapped("DXVK uses Vulkan. The add-on now loads safely there, but depth merging remains available only with native D3D9.");
+		return;
+	}
+
 	device_state *const state = runtime->get_device()->get_private_data<device_state>();
 	if (state == nullptr)
 	{
@@ -545,7 +555,7 @@ static void draw_settings(effect_runtime *runtime)
 
 	ImGui::Text("Active clear index: %u%s", state->active_clear_index(), s_forced_clear_index == 0 ? " (automatic)" : " (manual)");
 	ImGui::Text("Merged draw calls: %llu", static_cast<unsigned long long>(state->merged_drawcalls));
-	ImGui::Text("Skipped UP draw calls: %llu", static_cast<unsigned long long>(state->skipped_up_drawcalls));
+	ImGui::Text("Skipped unbound/UP draw calls: %llu", static_cast<unsigned long long>(state->skipped_unbound_drawcalls));
 	ImGui::Text("Failed intercepted draws: %llu", static_cast<unsigned long long>(state->failed_drawcalls));
 
 	ImGui::Separator();
@@ -574,10 +584,11 @@ static void load_config()
 	reshade::get_config_value(nullptr, "WEAPON_DEPTH_MERGE", "DepthBias", s_depth_bias);
 	reshade::get_config_value(nullptr, "WEAPON_DEPTH_MERGE", "RequireFullSizeViewport", s_require_full_size_viewport);
 }
+
 }
 
 extern "C" __declspec(dllexport) const char *NAME = "Weapon Depth Merge";
-extern "C" __declspec(dllexport) const char *DESCRIPTION = "Weapon Depth Merge 1.0 for D3D9 x86 and ReShade 6.7.3.";
+extern "C" __declspec(dllexport) const char *DESCRIPTION = "Weapon Depth Merge 1.1 for native D3D9 x86 and ReShade 6.7.3.";
 
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 {
@@ -595,13 +606,10 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 		reshade::register_event<reshade::addon_event::destroy_resource_view>(on_destroy_resource_view);
 		reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(on_bind_render_targets);
 		reshade::register_event<reshade::addon_event::bind_viewports>(on_bind_viewports);
-		reshade::register_event<reshade::addon_event::bind_vertex_buffers>(on_bind_vertex_buffers);
 		reshade::register_event<reshade::addon_event::draw>(on_draw);
 		reshade::register_event<reshade::addon_event::draw_indexed>(on_draw_indexed);
 		reshade::register_event<reshade::addon_event::clear_depth_stencil_view>(on_clear_depth);
 		reshade::register_event<reshade::addon_event::present>(on_present);
-		reshade::register_event<reshade::addon_event::reshade_begin_effects>(on_begin_effects);
-		reshade::register_event<reshade::addon_event::reshade_reloaded_effects>(update_depth_binding);
 		reshade::register_overlay(nullptr, draw_settings);
 		break;
 

@@ -9,7 +9,39 @@
 - Generic Depth `Copy depth buffer before clear operations` disabled
 - In-game MSAA disabled
 
-Initial runtime testing reported that the feature works and no bug was observed.
+Initial native D3D9 functional testing confirmed that depth merging works; later focus-switch testing exposed WDM-002.
+
+## RC18 functional candidate
+
+RC18 restores depth merging without registering `bind_vertex_buffers`. Enable Generic Depth, disable its preserve/copy-before-clear option, disable in-game MSAA, and install `WeaponDepthMerge.addon32`. Confirm that the WeaponDepthMerge settings page, full-resolution INTZ selection, and merged draw counter return.
+
+Battlefield 2 native D3D9 testing confirmed that AO no longer passes through the weapon/arms and that main-menu Alt+Tab, repeated in-map Alt+Tab, and Esc after returning are all stable. The remaining RC18 release gate is the DXVK/Vulkan startup and menu-entry no-op test.
+
+## Alt+Tab/device-reset regression
+
+Version 1.0 and 1.1 RC1 can become very dark, freeze, and eventually exit after switching away from Battlefield 2 and back. RC2 prevents the dark frame but still hangs frequently. RC3 made the crash rate near 100%. RC4 permanently disables interception after focus loss. RC5 additionally removes the per-frame global `DEPTH` binding update that can slow ReShade's shader reload.
+
+Run this test in both native D3D9 and DXVK:
+
+1. Reach the main menu, then enter a map and spawn.
+2. Alt+Tab to another application for at least five seconds.
+3. Return to Battlefield 2 and wait at least thirty seconds.
+4. Repeat the cycle three times from the menu and three times while spawned.
+5. In native D3D9, confirm the game remains stable. It is expected that `Merged draw calls` stops increasing after the first focus loss until process restart.
+6. In DXVK, confirm that the game remains stable and the add-on remains inactive when ReShade reports Vulkan.
+
+Failure evidence should include the end of `ReShade.log` and the last visible values of both `Device interception` and `Focus interception`.
+
+## DXVK regression
+
+Version 1.0 could crash at startup when Battlefield 2 used DXVK and ReShade therefore ran on Vulkan. Version 1.1 guards all non-D3D9 event callbacks. Expected behavior under DXVK is now:
+
+- the game reaches its normal startup/menu instead of black-screen exiting;
+- the add-on can be listed by ReShade;
+- the overlay states that the add-on is inactive because the runtime is not native D3D9;
+- no weapon-depth merging is attempted on Vulkan.
+
+This is a crash-compatibility fix, not a Vulkan implementation of the merge algorithm.
 
 ## Installation
 
@@ -43,4 +75,4 @@ Copy `build/WeaponDepthMerge.addon32` beside the ReShade D3D9 DLL. Start with:
 - Die, respawn, enter vehicles, switch seats, and switch weapons.
 - Open menus, loading screens, scope views, and commander/map screens.
 - Test AO both enabled and disabled to separate depth bugs from effect settings.
-
+- Start once through DXVK/Vulkan to verify safe no-op loading and no startup crash.

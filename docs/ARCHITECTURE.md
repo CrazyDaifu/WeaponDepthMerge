@@ -37,7 +37,7 @@ The per-D3D9-device state tracks:
 - the ordinary D3D9 scratch depth surface;
 - meaningful draw segments split by depth clears;
 - the selected clear index and whether the weapon phase is active;
-- UP-draw detection and diagnostic counters.
+- native stream/index validation and diagnostic counters.
 
 ## Boundary selection
 
@@ -58,10 +58,10 @@ Then the original draw is executed with normal color/stencil masks and the separ
 
 ## Intentional limitations
 
+- ReShade 6.7.3's D3D9 `bind_vertex_buffers` event activates internal fake buffers for `DrawPrimitiveUP`. Those handles are released but not cleared during Reset, so the add-on must not register that event. WeaponDepthMerge instead validates native stream-0 and index-buffer bindings immediately before replay and passes unbound or likely UP draws through unchanged.
 - D3D9 x86 only.
 - MSAA is unsupported.
 - `DrawPrimitiveUP` and `DrawIndexedPrimitiveUP` pass through without merging, matching the verified historical behavior.
 - Every eligible draw after the selected boundary is treated as first-person geometry.
 - The plug-in relies on official Generic Depth to create the INTZ replacement.
 - The scratch depth tries D24S8, D24X8, then D16; unusual format compatibility may fail.
-
